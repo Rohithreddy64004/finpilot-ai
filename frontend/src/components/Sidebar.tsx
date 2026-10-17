@@ -54,7 +54,7 @@ export function Sidebar({
       <div className="sidebar-bottom">
         <details className="sidebar-help">
           <summary><CircleHelp size={16} /><span>About this assistant</span></summary>
-          <p>FinPilot answers one question at a time using the selected domain's retrieved sources. Citations, source grounding, and claim assessments are shown separately.</p>
+          <p>FinPilot routes one question at a time across tax, investment, and insurance education, or uses experts you explicitly select. Citations, source grounding, and claim assessments are shown separately.</p>
         </details>
         <div className="sidebar-profile"><span className="profile-initial">F</span><span>FinPilot workspace</span><span className="online-dot" aria-label="Local application" /></div>
       </div>

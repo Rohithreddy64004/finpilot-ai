@@ -61,3 +61,61 @@ export interface InferenceResponse {
   applicable_as_of?: string
   educational_disclaimer?: string
 }
+
+export interface AskRequest {
+  question: string
+  experts?: Domain[]
+}
+
+export interface AskSource extends RetrievedEvidence {
+  expert: Domain
+}
+
+export interface AskExpertResult {
+  expert: Domain
+  status: 'complete' | 'error'
+  answer: string
+  alignment_status: 'aligned' | 'unaligned'
+  source_grounding_supported: boolean
+  source_grounding_note: string
+  evidence: AskSource[]
+  claim_verifications: ClaimVerification[]
+  claim_verification_status: ClaimVerificationSummaryStatus
+  independent_verification_performed: boolean
+  claim_verification_note: string
+  limitations: string[]
+  error?: string | null
+}
+
+export interface AskResponse {
+  request_id: string
+  question: string
+  routing: {
+    experts: Domain[]
+    reason: string
+    routing_method: 'model' | 'fallback' | 'override'
+  }
+  experts: AskExpertResult[]
+  final_answer: string
+  final_answer_source_grounding_supported: boolean
+  final_answer_source_grounding_note: string
+  final_answer_claim_verifications: ClaimVerification[]
+  final_answer_claim_verification_status: ClaimVerificationSummaryStatus
+  final_answer_independent_verification_performed: boolean
+  final_answer_claim_verification_note: string
+  sources: AskSource[]
+  gaps: string[]
+  latency_ms: {
+    routing_ms: number
+    experts_ms: number
+    per_expert_ms: Partial<Record<Domain, number>>
+    synthesis_ms: number
+    total_ms: number
+  }
+}
+
+export interface FeedbackResponse {
+  id: string
+  query_id: string
+  notice: string
+}

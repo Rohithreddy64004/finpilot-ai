@@ -4,7 +4,7 @@ import { ChatInput } from './components/ChatInput'
 import { ChatMessage } from './components/ChatMessage'
 import { DomainSelector } from './components/DomainSelector'
 import { Sidebar } from './components/Sidebar'
-import { ApiError, requestInference } from './services/api'
+import { ApiError, requestAsk, requestFeedback } from './services/api'
 import type { Domain } from './types/api'
 import type { ChatEntry, Conversation } from './types/chat'
 import './App.css'
@@ -53,6 +53,7 @@ function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => [createConversation()])
   const [activeConversationId, setActiveConversationId] = useState(() => conversations[0]?.id ?? '')
   const [selectedDomain, setSelectedDomain] = useState<Domain>('tax')
+  const [selectedExperts, setSelectedExperts] = useState<Domain[]>([])
   const [draft, setDraft] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -94,22 +95,25 @@ function App() {
     ))
   }
 
-  async function performInference(
+  async function performAsk(
     conversationId: string,
     responseId: string,
-    domain: Domain,
     question: string,
+    expertOverride: Domain[],
   ) {
     if (submissionLock.current) return
     submissionLock.current = true
     setIsSubmitting(true)
     try {
-      const response = await requestInference({ domain, question })
+      const response = await requestAsk({
+        question,
+        ...(expertOverride.length > 0 ? { experts: expertOverride } : {}),
+      })
       updateMessage(conversationId, responseId, {
-        content: response.answer,
+        content: response.final_answer,
         pending: false,
         error: false,
-        response,
+        askResponse: response,
       })
     } catch (error) {
       const message = error instanceof ApiError
@@ -119,6 +123,7 @@ function App() {
         content: message,
         pending: false,
         error: true,
+        askResponse: undefined,
       })
     } finally {
       submissionLock.current = false
@@ -140,13 +145,21 @@ function App() {
     }
 
     const domain = selectedDomain
-    const userMessage: ChatEntry = { id: createId(), role: 'user', content: question, domain }
+    const expertOverride = [...selectedExperts]
+    const userMessage: ChatEntry = {
+      id: createId(),
+      role: 'user',
+      content: question,
+      domain,
+      expertOverride,
+    }
     const responseId = createId()
     const pendingMessage: ChatEntry = {
       id: responseId,
       role: 'assistant',
       content: '',
       domain,
+      expertOverride,
       pending: true,
     }
     setConversations((current) => current.map((item) =>
@@ -155,7 +168,7 @@ function App() {
         : item,
     ))
     setDraft('')
-    await performInference(conversationId, responseId, domain, question)
+    await performAsk(conversationId, responseId, question, expertOverride)
   }
 
   function retryQuestion(conversationId: string, responseId: string) {
@@ -173,12 +186,22 @@ function App() {
       pending: true,
       error: false,
     })
-    void performInference(
+    void performAsk(
       conversationId,
       responseId,
-      originalQuestion.domain,
       originalQuestion.content,
+      originalQuestion.expertOverride ?? [],
     )
+  }
+
+  function toggleExpert(expert: Domain) {
+    setSelectedExperts((current) => current.includes(expert)
+      ? current.filter((item) => item !== expert)
+      : [...current, expert])
+  }
+
+  async function sendFeedback(requestId: string, rating: 'up' | 'down') {
+    await requestFeedback(requestId, rating)
   }
 
   return (
@@ -220,6 +243,24 @@ function App() {
             <section className="domain-panel" aria-label="Choose an expert domain">
               <div className="panel-heading"><div><span className="panel-overline">YOUR TOPIC</span><h2>Choose a domain</h2></div><span className="domain-step">01 <span>/ 02</span></span></div>
               <DomainSelector selected={selectedDomain} onSelect={setSelectedDomain} disabled={isSubmitting} />
+              <fieldset className="expert-override" disabled={isSubmitting}>
+                <legend>Choose experts (optional)</legend>
+                <p>{selectedExperts.length
+                  ? 'FinPilot will use only the selected experts.'
+                  : 'Leave these unchecked to let the router choose experts.'}</p>
+                <div className="expert-checkboxes">
+                  {(['tax', 'investment', 'insurance'] as const).map((expert) => (
+                    <label key={expert}>
+                      <input
+                        type="checkbox"
+                        checked={selectedExperts.includes(expert)}
+                        onChange={() => toggleExpert(expert)}
+                      />
+                      {expert === 'tax' ? 'Tax' : expert === 'investment' ? 'Investment' : 'Insurance'}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
             </section>
 
             <section className={`conversation-panel ${messages.length ? 'has-messages' : ''}`} aria-label="FinPilot conversation">
@@ -249,6 +290,7 @@ function App() {
                         ? () => retryQuestion(activeConversationId, message.id)
                         : undefined}
                       retryDisabled={isSubmitting}
+                      onFeedback={sendFeedback}
                     />
                   ))}
                 </div>

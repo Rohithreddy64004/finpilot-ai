@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
-import type { Domain, InferenceResponse } from './types/api'
+import type { AskResponse, Domain, InferenceResponse } from './types/api'
 
 function answerFixture(domain: Domain = 'investment'): InferenceResponse {
   return {
@@ -42,6 +42,63 @@ function answerFixture(domain: Domain = 'investment'): InferenceResponse {
   }
 }
 
+function askFixture(domain: Domain = 'investment'): AskResponse {
+  const source = {
+    expert: domain,
+    citation_id: 'S1',
+    passage_id: domain + ':fixture:1',
+    document_id: 'document-fixture',
+    document_name: domain + ' public guide',
+    excerpt: 'Diversification can reduce the effect of one investment on a portfolio.',
+    source: {
+      title: 'Public education guide',
+      publisher: domain === 'investment' ? 'SEBI' : 'Public authority',
+      url: 'https://example.gov.in/guide',
+      accessed_on: '2026-10-15',
+    },
+  }
+  return {
+    request_id: 'request-fixture',
+    question: 'What is diversification?',
+    routing: {
+      experts: [domain],
+      reason: 'Selected ' + domain + ' education.',
+      routing_method: 'fallback',
+    },
+    experts: [{
+      expert: domain,
+      status: 'complete',
+      answer: 'Diversification spreads exposure across investments. [S1]',
+      alignment_status: 'unaligned',
+      source_grounding_supported: true,
+      source_grounding_note: 'The answer cites a retrieved passage.',
+      evidence: [source],
+      claim_verifications: [],
+      claim_verification_status: 'verification_unavailable',
+      independent_verification_performed: false,
+      claim_verification_note: 'No independent claim verifier is configured.',
+      limitations: ['This is general education.'],
+      error: null,
+    }],
+    final_answer: 'Diversification spreads exposure across investments. [S1]',
+    final_answer_source_grounding_supported: true,
+    final_answer_source_grounding_note: 'Every citation maps to a retrieved passage.',
+    final_answer_claim_verifications: [],
+    final_answer_claim_verification_status: 'verification_unavailable',
+    final_answer_independent_verification_performed: false,
+    final_answer_claim_verification_note: 'No independent claim verifier is configured.',
+    sources: [source],
+    gaps: [],
+    latency_ms: {
+      routing_ms: 8,
+      experts_ms: 20,
+      per_expert_ms: { [domain]: 19 },
+      synthesis_ms: 0,
+      total_ms: 31,
+    },
+  }
+}
+
 function mockFetch(response: unknown, status = 200) {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
@@ -63,11 +120,11 @@ describe('FinPilot chat interface', () => {
 
     expect(container.querySelector('.app-shell')?.getAttribute('data-theme')).toBe('light')
     fireEvent.click(screen.getByText('About this assistant'))
-    expect(screen.getByText(/one question at a time using the selected domain's retrieved sources/)).toBeTruthy()
+    expect(screen.getByText(/routes one question at a time across tax, investment, and insurance/)).toBeTruthy()
   })
 
   it('submits the chosen domain and renders real answer metadata and evidence', async () => {
-    const fetchMock = mockFetch(answerFixture())
+    const fetchMock = mockFetch(askFixture())
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: /investing/i }))
@@ -80,17 +137,33 @@ describe('FinPilot chat interface', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(JSON.parse(String(init.body))).toEqual({
-      domain: 'investment',
       question: 'What is the difference between saving and investing?',
     })
-    expect(screen.getByText('Source passages used')).toBeTruthy()
-    expect(screen.getByText('Verification unavailable')).toBeTruthy()
-    expect(screen.getByText('Unverified')).toBeTruthy()
-    expect(screen.getByText(/No separate verifier ran/)).toBeTruthy()
+    expect(screen.getAllByText('Source passages used').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Verification unavailable')).toHaveLength(2)
+    expect(screen.getByText(/No independent claim verifier is configured/)).toBeTruthy()
+    expect(screen.getByText('Base model (not aligned)')).toBeTruthy()
     fireEvent.click(screen.getByText(/Sources & evidence/))
     expect(screen.getByText(/Diversification can reduce the effect/)).toBeTruthy()
     expect(screen.getByText('Not a substitute for personal financial advice.')).toBeTruthy()
     expect(screen.queryByText('FinPilot AI provides general financial education, not licensed advice.')).toBeNull()
+  })
+
+  it('sends an explicit expert override only when one is selected', async () => {
+    const fetchMock = mockFetch(askFixture('insurance'))
+    render(<App />)
+    fireEvent.click(screen.getByLabelText('Insurance'))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
+      target: { value: 'What is an insurance premium?' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
+
+    await expectAnswerVisible()
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({
+      question: 'What is an insurance premium?',
+      experts: ['insurance'],
+    })
   })
 
   it('shows a safe backend-unavailable state', async () => {
@@ -116,7 +189,7 @@ describe('FinPilot chat interface', () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        text: async () => JSON.stringify(answerFixture('tax')),
+        text: async () => JSON.stringify(askFixture('tax')),
       })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
@@ -131,14 +204,11 @@ describe('FinPilot chat interface', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     const [, retryInit] = fetchMock.mock.calls[1] as [string, RequestInit]
-    expect(JSON.parse(String(retryInit.body))).toEqual({
-      domain: 'tax',
-      question: 'Explain a tax rebate.',
-    })
+    expect(JSON.parse(String(retryInit.body))).toEqual({ question: 'Explain a tax rebate.' })
   })
 
   it('supports Ctrl+Enter from the question field', async () => {
-    const fetchMock = mockFetch(answerFixture('tax'))
+    const fetchMock = mockFetch(askFixture('tax'))
     render(<App />)
     const input = screen.getByRole('textbox', { name: 'Your finance question' })
     fireEvent.change(input, { target: { value: 'Explain investment risk.' } })
@@ -159,19 +229,19 @@ describe('FinPilot chat interface', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
 
-    expect(screen.getByRole('status').textContent).toContain('Checking the selected source library')
+    expect(screen.getByRole('status').textContent).toContain('Routing and checking')
     expect((screen.getByRole('button', { name: 'Send question' }) as HTMLButtonElement).disabled).toBe(true)
     expect(fetchMock).toHaveBeenCalledOnce()
     resolveFetch?.({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify(answerFixture('tax')),
+      text: async () => JSON.stringify(askFixture('tax')),
     } as Response)
     await expectAnswerVisible()
   })
 
   it('keeps previous conversation visible after starting a new chat', async () => {
-    mockFetch(answerFixture('tax'))
+    mockFetch(askFixture('tax'))
     render(<App />)
     fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
       target: { value: 'What is a tax rebate?' },

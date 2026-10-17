@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ApiError, parseInferenceResponse, requestInference } from './api'
-import type { Domain, InferenceResponse } from '../types/api'
+import {
+  ApiError,
+  parseAskResponse,
+  parseInferenceResponse,
+  requestAsk,
+  requestFeedback,
+  requestInference,
+} from './api'
+import type { AskResponse, Domain, InferenceResponse } from '../types/api'
 
 function responseFixture(domain: Domain = 'tax'): InferenceResponse {
   return {
@@ -40,6 +47,48 @@ function mockedResponse(payload: unknown, status = 200): Response {
     status,
     text: async () => JSON.stringify(payload),
   } as Response
+}
+
+function askResponseFixture(): AskResponse {
+  const source = {
+    expert: 'tax' as const,
+    citation_id: 'S1',
+    passage_id: 'tax:passage:1',
+    document_id: 'tax-document',
+    document_name: 'Tax guide',
+    excerpt: 'Taxable income is assessed under the applicable regime.',
+    source: { title: 'Income Tax Department', url: 'https://www.incometax.gov.in/' },
+  }
+  return {
+    request_id: 'query-1',
+    question: 'How do tax regimes work?',
+    routing: { experts: ['tax'], reason: 'Tax topic.', routing_method: 'fallback' },
+    experts: [{
+      expert: 'tax',
+      status: 'complete',
+      answer: 'Taxable income is assessed under the applicable regime. [S1]',
+      alignment_status: 'unaligned',
+      source_grounding_supported: true,
+      source_grounding_note: 'The citation maps to a retrieved passage.',
+      evidence: [source],
+      claim_verifications: [],
+      claim_verification_status: 'verification_unavailable',
+      independent_verification_performed: false,
+      claim_verification_note: 'No verifier is configured.',
+      limitations: [],
+      error: null,
+    }],
+    final_answer: 'Taxable income is assessed under the applicable regime. [S1]',
+    final_answer_source_grounding_supported: true,
+    final_answer_source_grounding_note: 'The citation maps to a retrieved passage.',
+    final_answer_claim_verifications: [],
+    final_answer_claim_verification_status: 'verification_unavailable',
+    final_answer_independent_verification_performed: false,
+    final_answer_claim_verification_note: 'No verifier is configured.',
+    sources: [source],
+    gaps: [],
+    latency_ms: { routing_ms: 2, experts_ms: 3, per_expert_ms: { tax: 2 }, synthesis_ms: 0, total_ms: 5 },
+  }
 }
 
 describe('requestInference', () => {
@@ -95,7 +144,7 @@ describe('requestInference', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network failure')))
 
     await expect(requestInference({ domain: 'tax', question: 'Explain a tax rebate.' })).rejects.toThrow(
-      'Cannot reach the FinPilot backend.',
+      'Cannot reach FinPilot through the same-origin API path.',
     )
   })
 
@@ -113,6 +162,51 @@ describe('requestInference', () => {
 
     await assertion
     vi.useRealTimers()
+  })
+})
+
+describe('multi-expert API', () => {
+  it('posts an ask with an optional expert override and validates citations', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockedResponse(askResponseFixture()))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await requestAsk({ question: 'How do tax regimes work?', experts: ['tax'] })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toMatch(/\/api\/ask$/)
+    expect(JSON.parse(String(init.body))).toEqual({
+      question: 'How do tax regimes work?',
+      experts: ['tax'],
+    })
+    expect(response.routing.experts).toEqual(['tax'])
+    expect(response.sources[0].citation_id).toBe('S1')
+  })
+
+  it('rejects a grounded answer whose citation is absent from returned sources', () => {
+    const fixture = askResponseFixture()
+    fixture.final_answer = 'Unsupported citation [S9].'
+    expect(() => parseAskResponse(fixture)).toThrow(/invalid source markers/)
+  })
+
+  it('rejects malformed citation markers in an individual expert answer', () => {
+    const fixture = askResponseFixture()
+    fixture.experts[0].answer = 'An answer with a malformed marker [Sx].'
+    expect(() => parseAskResponse(fixture)).toThrow(/expert answer with invalid source markers/)
+  })
+
+  it('posts feedback against the saved query identifier', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockedResponse({
+      id: 'feedback-1',
+      query_id: 'query-1',
+      notice: 'Stored separately.',
+    }, 201))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestFeedback('query-1', 'up')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toMatch(/\/api\/feedback$/)
+    expect(JSON.parse(String(init.body))).toEqual({ query_id: 'query-1', rating: 'up' })
   })
 })
 

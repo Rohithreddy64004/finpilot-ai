@@ -3,21 +3,28 @@ import type { ChatEntry } from '../types/chat'
 import { EvidencePanel } from './EvidencePanel'
 import { MarkdownContent } from './MarkdownContent'
 import { StatusBadge } from './StatusBadge'
+import { AskResponsePanel } from './AskResponsePanel'
 
 const domainLabels = { tax: 'Tax education', investment: 'Investment education', insurance: 'Insurance education' }
 
 interface ChatMessageProps {
   entry: ChatEntry
   onRetry?: () => void
+  onFeedback?: (requestId: string, rating: 'up' | 'down') => Promise<void>
   retryDisabled?: boolean
 }
 
-export function ChatMessage({ entry, onRetry, retryDisabled = false }: ChatMessageProps) {
+export function ChatMessage({ entry, onRetry, onFeedback, retryDisabled = false }: ChatMessageProps) {
   if (entry.role === 'user') {
     return (
       <article className="message-row user-row">
         <div className="user-message-wrap">
-          <div className="message-kicker"><span>{domainLabels[entry.domain]}</span><span>You</span></div>
+          <div className="message-kicker">
+            <span>{entry.expertOverride?.length
+              ? 'Chosen: ' + entry.expertOverride.map((expert) => domainLabels[expert]).join(', ')
+              : 'Automatic expert routing'}</span>
+            <span>You</span>
+          </div>
           <div className="user-message">{entry.content}</div>
         </div>
         <span className="avatar user-avatar" aria-hidden="true"><UserRound size={17} /></span>
@@ -35,14 +42,20 @@ export function ChatMessage({ entry, onRetry, retryDisabled = false }: ChatMessa
     <article className="message-row assistant-row" aria-label="FinPilot answer">
       <span className="avatar assistant-avatar" aria-hidden="true"><Bot size={18} /></span>
       <div className="assistant-message-wrap">
-        <div className="message-kicker"><span>FinPilot AI</span>{entry.response && <span>{domainLabels[entry.response.domain]}</span>}</div>
+        <div className="message-kicker">
+          <span>FinPilot AI</span>
+          {entry.askResponse && <span>Multi-expert response</span>}
+          {entry.response && <span>{domainLabels[entry.response.domain]}</span>}
+        </div>
         {entry.pending ? (
-          <div className="pending-answer" role="status"><LoaderCircle className="spin" size={17} /> Checking the selected source library…</div>
+          <div className="pending-answer" role="status"><LoaderCircle className="spin" size={17} /> Routing and checking the selected source libraries…</div>
         ) : entry.error ? (
           <div className="error-panel" role="alert">
             <AlertCircle size={18} /><span>{entry.content}</span>
             {onRetry && <button className="retry-button" type="button" onClick={onRetry} disabled={retryDisabled}>Retry</button>}
           </div>
+        ) : entry.askResponse ? (
+          <AskResponsePanel response={entry.askResponse} onFeedback={onFeedback} />
         ) : entry.response ? (
           <div className="answer-card">
             <div className="answer-topline">

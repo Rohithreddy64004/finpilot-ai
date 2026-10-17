@@ -1,4 +1,4 @@
-import type { Domain, InferenceResponse } from './api'
+import type { AskResponse, Domain, InferenceResponse } from './api'
 
 export interface ChatEntry {
   id: string
@@ -8,6 +8,8 @@ export interface ChatEntry {
   pending?: boolean
   error?: boolean
   response?: InferenceResponse
+  askResponse?: AskResponse
+  expertOverride?: Domain[]
 }
 
 export interface Conversation {

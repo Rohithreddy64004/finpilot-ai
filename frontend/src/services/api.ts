@@ -1,13 +1,20 @@
 import type {
+  AskExpertResult,
+  AskRequest,
+  AskResponse,
+  AskSource,
   ClaimVerification,
+  ClaimVerificationSummaryStatus,
   Domain,
+  FeedbackResponse,
   InferenceRequest,
   InferenceResponse,
   RetrievedEvidence,
   SourceReference,
 } from '../types/api'
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '')
+// Keep browser requests same-origin; Vite proxies these paths in local dev.
+const API_BASE_URL = ''
 const REQUEST_TIMEOUT_MS = 60_000
 
 export class ApiError extends Error {
@@ -254,7 +261,7 @@ export async function requestInference(request: InferenceRequest): Promise<Infer
       if (controller.signal.aborted) {
         throw new ApiError('The request timed out. Please try again.')
       }
-      throw new ApiError('Cannot reach the FinPilot backend. Check the API URL and make sure the server is running.')
+      throw new ApiError('Cannot reach FinPilot through the same-origin API path. Check that the backend server is running.')
     }
 
     let responseText: string
@@ -275,5 +282,228 @@ export async function requestInference(request: InferenceRequest): Promise<Infer
     return parseInferenceResponse(payload, request.domain)
   } finally {
     globalThis.clearTimeout(timeout)
+  }
+}
+
+function parseAskSource(value: unknown): AskSource {
+  if (!isRecord(value)) throw new ApiError('The backend returned malformed ask evidence.')
+  const expert = value.expert
+  if (expert !== 'tax' && expert !== 'investment' && expert !== 'insurance') {
+    throw new ApiError('The backend returned an unknown expert for a source passage.')
+  }
+  return { ...parseEvidence(value), expert }
+}
+
+function parseStringList(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    throw new ApiError('The backend returned an invalid ' + field + ' list.')
+  }
+  return value
+}
+
+function parseAskExpert(value: unknown): AskExpertResult {
+  if (!isRecord(value)) throw new ApiError('The backend returned a malformed expert result.')
+  const expert = value.expert
+  if (expert !== 'tax' && expert !== 'investment' && expert !== 'insurance') {
+    throw new ApiError('The backend returned an unknown expert.')
+  }
+  const status = value.status
+  const alignment = value.alignment_status
+  const grounded = value.source_grounding_supported
+  const independent = value.independent_verification_performed
+  if (status !== 'complete' && status !== 'error') throw new ApiError('The backend returned an invalid expert state.')
+  if (alignment !== 'aligned' && alignment !== 'unaligned') throw new ApiError('The backend returned an invalid alignment state.')
+  if (typeof grounded !== 'boolean' || typeof independent !== 'boolean') {
+    throw new ApiError('The backend returned invalid expert verification metadata.')
+  }
+  if (!Array.isArray(value.evidence) || !Array.isArray(value.claim_verifications)) {
+    throw new ApiError('The backend returned malformed expert evidence or claim assessments.')
+  }
+  const evidence = value.evidence.map(parseAskSource)
+  if (evidence.some((source) => source.expert !== expert)) {
+    throw new ApiError('The backend mixed source passages across expert domains.')
+  }
+  const knownIds = new Set(evidence.map((item) => item.citation_id))
+  const claims = value.claim_verifications.map(parseClaim)
+  for (const claim of claims) {
+    if (claim.cited_evidence_ids.some((id) => !knownIds.has(id)) ||
+        claim.evidence_ids.some((id) => !claim.cited_evidence_ids.includes(id))) {
+      throw new ApiError('The backend returned a claim linked to unavailable expert evidence.')
+    }
+  }
+  const answer = requireString(value, 'answer')
+  const answerMarkers = [...answer.matchAll(/\[S[^\]\r\n]*\]/g)].map((match) => match[0])
+  const answerIds = answerMarkers.map((marker) => /^\[(S\d+)\]$/.exec(marker)?.[1])
+  if (answerIds.some((id) => !id || !knownIds.has(id)) || (grounded && answerIds.length === 0)) {
+    throw new ApiError('The backend returned an expert answer with invalid source markers.')
+  }
+  if (independent && !claims.some((claim) => claim.assessment_basis === 'independent_verifier')) {
+    throw new ApiError('The backend reported expert verification without a verifier assessment.')
+  }
+  return {
+    expert,
+    status,
+    answer,
+    alignment_status: alignment,
+    source_grounding_supported: grounded,
+    source_grounding_note: optionalString(value, 'source_grounding_note') ?? '',
+    evidence,
+    claim_verifications: claims,
+    claim_verification_status: parseAskClaimSummary(value.claim_verification_status),
+    independent_verification_performed: independent,
+    claim_verification_note: optionalString(value, 'claim_verification_note') ?? '',
+    limitations: parseStringList(value.limitations, 'expert limitations'),
+    error: optionalString(value, 'error'),
+  }
+}
+
+function parseAskClaimSummary(value: unknown): ClaimVerificationSummaryStatus {
+  const known = [
+    'fully_verified', 'partially_verified', 'evidence_supported', 'partially_supported',
+    'verification_unavailable', 'unverified', 'contains_contradiction', 'not_performed',
+  ]
+  if (typeof value !== 'string' || !known.includes(value)) {
+    throw new ApiError('The backend returned an unknown claim verification summary.')
+  }
+  return value as ClaimVerificationSummaryStatus
+}
+
+function parseNonnegativeInteger(value: unknown, field: string): number {
+  if (!Number.isInteger(value) || Number(value) < 0) {
+    throw new ApiError('The backend returned an invalid ' + field + '.')
+  }
+  return Number(value)
+}
+
+export function parseAskResponse(value: unknown): AskResponse {
+  if (!isRecord(value) || !isRecord(value.routing) || !isRecord(value.latency_ms)) {
+    throw new ApiError('The backend returned an invalid multi-expert response.')
+  }
+  const routingExperts = value.routing.experts
+  if (!Array.isArray(routingExperts) ||
+      !routingExperts.every((item) => item === 'tax' || item === 'investment' || item === 'insurance')) {
+    throw new ApiError('The backend returned an invalid routing decision.')
+  }
+  const routingMethod = value.routing.routing_method
+  if (routingMethod !== 'model' && routingMethod !== 'fallback' && routingMethod !== 'override') {
+    throw new ApiError('The backend returned an unknown routing method.')
+  }
+  if (!Array.isArray(value.experts) || !Array.isArray(value.sources) ||
+      !Array.isArray(value.final_answer_claim_verifications)) {
+    throw new ApiError('The backend returned invalid expert or source lists.')
+  }
+  const experts = value.experts.map(parseAskExpert)
+  const sources = value.sources.map(parseAskSource)
+  const sourceIds = sources.map((source) => source.citation_id)
+  if (new Set(sourceIds).size !== sourceIds.length) {
+    throw new ApiError('The backend returned duplicate source citation IDs.')
+  }
+  const knownIds = new Set(sourceIds)
+  const sourceById = new Map(sources.map((source) => [source.citation_id, source]))
+  for (const expert of experts) {
+    for (const evidence of expert.evidence) {
+      const returnedSource = sourceById.get(evidence.citation_id)
+      if (!returnedSource || returnedSource.expert !== expert.expert ||
+          returnedSource.passage_id !== evidence.passage_id) {
+        throw new ApiError('The backend returned inconsistent expert and final source records.')
+      }
+    }
+  }
+  const claims = value.final_answer_claim_verifications.map(parseClaim)
+  for (const claim of claims) {
+    if (claim.cited_evidence_ids.some((id) => !knownIds.has(id)) ||
+        claim.evidence_ids.some((id) => !claim.cited_evidence_ids.includes(id))) {
+      throw new ApiError('The final claim assessment references a missing source passage.')
+    }
+  }
+  const finalAnswer = requireString(value, 'final_answer')
+  const grounded = value.final_answer_source_grounding_supported
+  const independent = value.final_answer_independent_verification_performed
+  if (typeof grounded !== 'boolean' || typeof independent !== 'boolean') {
+    throw new ApiError('The backend returned invalid final-answer verification metadata.')
+  }
+  const citationLike = [...finalAnswer.matchAll(/\[S[^\]\r\n]*\]/g)].map((match) => match[0])
+  const finalIds = citationLike.map((marker) => /^\[(S\d+)\]$/.exec(marker)?.[1])
+  if (finalIds.some((id) => !id || !knownIds.has(id)) || (grounded && finalIds.length === 0)) {
+    throw new ApiError('The backend returned a final answer with invalid source markers.')
+  }
+  const perExpert = value.latency_ms.per_expert_ms
+  if (!isRecord(perExpert)) throw new ApiError('The backend returned invalid expert timing data.')
+  const perExpertMs: Partial<Record<Domain, number>> = {}
+  for (const [key, timing] of Object.entries(perExpert)) {
+    if (key !== 'tax' && key !== 'investment' && key !== 'insurance') {
+      throw new ApiError('The backend returned a timing value for an unknown expert.')
+    }
+    perExpertMs[key] = parseNonnegativeInteger(timing, 'expert latency')
+  }
+  return {
+    request_id: requireString(value, 'request_id'),
+    question: requireString(value, 'question'),
+    routing: {
+      experts: routingExperts as Domain[],
+      reason: requireString(value.routing, 'reason'),
+      routing_method: routingMethod,
+    },
+    experts,
+    final_answer: finalAnswer,
+    final_answer_source_grounding_supported: grounded,
+    final_answer_source_grounding_note: optionalString(value, 'final_answer_source_grounding_note') ?? '',
+    final_answer_claim_verifications: claims,
+    final_answer_claim_verification_status: parseAskClaimSummary(value.final_answer_claim_verification_status),
+    final_answer_independent_verification_performed: independent,
+    final_answer_claim_verification_note: optionalString(value, 'final_answer_claim_verification_note') ?? '',
+    sources,
+    gaps: parseStringList(value.gaps, 'gap'),
+    latency_ms: {
+      routing_ms: parseNonnegativeInteger(value.latency_ms.routing_ms, 'routing latency'),
+      experts_ms: parseNonnegativeInteger(value.latency_ms.experts_ms, 'expert latency'),
+      per_expert_ms: perExpertMs,
+      synthesis_ms: parseNonnegativeInteger(value.latency_ms.synthesis_ms, 'synthesis latency'),
+      total_ms: parseNonnegativeInteger(value.latency_ms.total_ms, 'total latency'),
+    },
+  }
+}
+
+async function postJson(path: string, body: unknown, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
+  const controller = new AbortController()
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    let response: Response
+    try {
+      response = await fetch(API_BASE_URL + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+    } catch {
+      if (controller.signal.aborted) throw new ApiError('The request timed out. Please try again.')
+      throw new ApiError('Cannot reach FinPilot through the same-origin API path. Check that the backend server is running.')
+    }
+    const responseText = await response.text()
+    let payload: unknown
+    try {
+      payload = responseText ? JSON.parse(responseText) : undefined
+    } catch {
+      if (response.ok) throw new ApiError('The backend returned malformed JSON.')
+    }
+    if (!response.ok) throw new ApiError(errorForStatus(response.status, payload), response.status)
+    return payload
+  } finally {
+    globalThis.clearTimeout(timeout)
+  }
+}
+
+export async function requestAsk(request: AskRequest): Promise<AskResponse> {
+  return parseAskResponse(await postJson('/api/ask', request, 180_000))
+}
+
+export async function requestFeedback(queryId: string, rating: 'up' | 'down'): Promise<FeedbackResponse> {
+  const payload = await postJson('/api/feedback', { query_id: queryId, rating })
+  if (!isRecord(payload)) throw new ApiError('The backend returned an invalid feedback response.')
+  return {
+    id: requireString(payload, 'id'),
+    query_id: requireString(payload, 'query_id'),
+    notice: optionalString(payload, 'notice') ?? '',
   }
 }

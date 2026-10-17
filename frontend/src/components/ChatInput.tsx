@@ -33,7 +33,7 @@ export function ChatInput({ value, onChange, onSubmit, disabled = false }: ChatI
         onKeyDown={handleKeyDown}
         placeholder="Ask a question about tax, investing, or insurance…"
         rows={2}
-        maxLength={10_000}
+        maxLength={2_000}
         disabled={disabled}
       />
       <div className="composer-footer">
