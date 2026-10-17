@@ -70,7 +70,17 @@ class LocalSourceContentStore:
                 temporary_file.write(content)
                 temporary_file.flush()
                 os.fsync(temporary_file.fileno())
-            os.replace(temporary_path, target)
+            try:
+                # Same-directory hard-link creation is atomic and fails if a
+                # concurrent writer already created the destination. Unlike
+                # replace/rename, it cannot silently overwrite those bytes.
+                os.link(temporary_path, target)
+            except FileExistsError:
+                if target.read_bytes() == content:
+                    return
+                raise SourceContentStoreError(
+                    "Source text already exists for this document ID and was not overwritten."
+                ) from None
         except SourceContentStoreError:
             raise
         except OSError:

@@ -39,7 +39,11 @@ _TAX_SLAB_QUERY = re.compile(
     re.IGNORECASE,
 )
 _TAX_SLAB_TERMS = re.compile(
-    r"\b(?:slabs?|brackets?|thresholds?|income range|taxable income)\b",
+    r"\b(?:(?:old|new)\s+regime\s+slabs?|(?:tax\s+)?slab\s+tables?|(?:tax\s+)?brackets?)\b",
+    re.IGNORECASE,
+)
+_TAX_REGIME_COMPARISON = re.compile(
+    r"\bold regime\b.*\bnew regime\b|\bnew regime\b.*\bold regime\b",
     re.IGNORECASE,
 )
 _CURRENCY_AMOUNT = re.compile(r"(?:₹|\bRs\.?\s*)\s*\d[\d,]*", re.IGNORECASE)
@@ -71,11 +75,39 @@ class RetrievedPassage:
 
 
 def _tokens(text: str) -> list[str]:
-    return [
-        token.casefold()
-        for token in _TOKEN_PATTERN.findall(text)
-        if len(token) > 1 and token.casefold() not in _STOP_WORDS
-    ]
+    normalized: list[str] = []
+    for raw_token in _TOKEN_PATTERN.findall(text):
+        token = raw_token.casefold()
+        if len(token) <= 1 or token in _STOP_WORDS:
+            continue
+
+        # A deliberately small normalizer handles common English inflections
+        # without adding a stemming dependency or conflating unrelated terms.
+        if len(token) > 4 and token.endswith("ies"):
+            token = token[:-3] + "y"
+        elif len(token) > 5 and token.endswith("es") and token[:-2].endswith(
+            ("s", "x", "z", "ch", "sh")
+        ):
+            token = token[:-2]
+        elif len(token) > 4 and token.endswith("s") and not token.endswith("ss"):
+            token = token[:-1]
+
+        if len(token) > 5 and token.endswith("ing"):
+            token = token[:-3]
+            if token.endswith("v"):
+                token += "e"
+            elif len(token) > 2 and token[-1] == token[-2] and token[-1] not in "aeiou":
+                token = token[:-1]
+        elif len(token) > 5 and token.endswith("ed"):
+            token = token[:-2]
+            if len(token) > 2 and token[-1] == token[-2] and token[-1] not in "aeiou":
+                token = token[:-1]
+
+        if len(token) > 7 and token.endswith("ment"):
+            token = token[:-4]
+        if len(token) > 1:
+            normalized.append(token)
+    return normalized
 
 
 def _sections(text: str) -> list[str]:
@@ -206,6 +238,15 @@ def _rank_passages(
             excerpt = candidate[2]
             if _contains_tax_slab_details(excerpt):
                 score += max(base_max, 1.0) * 2.0
+            elif _TAX_REGIME_COMPARISON.search(excerpt) and re.search(
+                r"\b(?:deductions?|exemptions?|taxable income)\b",
+                excerpt,
+                re.IGNORECASE,
+            ):
+                # A factual old/new regime comparison is useful context for a
+                # broad slabs question, but stays below passages with actual
+                # numerical slab tables.
+                score += max(base_max, 1.0) * 1.5
         ranked.append((score, candidate))
     return sorted(
         (item for item in ranked if item[0] > 0),
@@ -224,14 +265,14 @@ async def load_registered_document_text(
 
     if record.domain != domain:
         raise SourceContentUnavailableError(
-            "The selected source document belongs to a different expert domain."
+            "Source content unavailable: the selected document belongs to a different expert domain."
         )
 
     content = await content_store.get(domain, record.document_id)
     if content is None:
         if record.original_filename != EXPECTED_CORPUS_FILES[domain]:
             raise SourceContentUnavailableError(
-                f"Registered {domain} document text is not available in the local corpus."
+                f"Source content unavailable: registered {domain} document text is not present in the local content store or corpus."
             )
         root = corpus_root or _ROOT
         file_path = root / EXPECTED_CORPUS_FILES[domain]
@@ -239,22 +280,22 @@ async def load_registered_document_text(
             content = await asyncio.to_thread(file_path.read_bytes)
         except OSError:
             raise SourceContentUnavailableError(
-                f"Registered {domain} document text is not available in the local corpus."
+                f"Source content unavailable: registered {domain} document text is not present in the local content store or corpus."
             ) from None
 
     if len(content) != record.size_bytes:
         raise SourceContentUnavailableError(
-            f"Local {domain} document size does not match its registered metadata."
+            f"Source content unavailable: local {domain} document size does not match its registered metadata."
         )
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise SourceContentUnavailableError(
-            f"The local {domain} document is not valid UTF-8 text."
+            f"Source content unavailable: the local {domain} document is not valid UTF-8 text."
         ) from None
     if not text.strip():
         raise SourceContentUnavailableError(
-            f"The local {domain} document has no readable text."
+            f"Source content unavailable: the local {domain} document has no readable text."
         )
     return text
 

@@ -19,6 +19,7 @@ from backend.app.nugen.alignment_service import NugenAlignmentService
 from backend.app.nugen.claim_verifier import NugenClaimVerifier
 from backend.app.nugen.client import NugenClient
 from backend.app.nugen.errors import NugenProtocolError
+from backend.app.rate_limit import enforce_api_rate_limit
 from backend.app.nugen.schemas import (
     BaseModelSummary,
     ChatCompletionRequest,
@@ -271,8 +272,32 @@ async def generate_domain_answer(
     content_store: LocalSourceContentStore = Depends(get_source_content_store),
     alignment_repository: AlignmentJobRepository = Depends(get_alignment_job_repository),
     claim_verifier: ClaimVerifier = Depends(get_claim_verifier),
+    _rate_limit: None = Depends(enforce_api_rate_limit),
 ) -> DomainInferenceResponse:
     """Generate one educational answer for tax, investment, or insurance."""
+
+    return await run_domain_inference(
+        request,
+        client=client,
+        settings=settings,
+        repository=repository,
+        content_store=content_store,
+        alignment_repository=alignment_repository,
+        claim_verifier=claim_verifier,
+    )
+
+
+async def run_domain_inference(
+    request: DomainInferenceRequest,
+    *,
+    client: NugenClient,
+    settings: Settings,
+    repository: SourceDocumentRepository,
+    content_store: LocalSourceContentStore,
+    alignment_repository: AlignmentJobRepository,
+    claim_verifier: ClaimVerifier,
+) -> DomainInferenceResponse:
+    """Shared single-domain pipeline used by both /api/inference and /api/ask."""
 
     # The local provenance collections are separate by domain. Only documents
     # registered to this domain and currently READY can enter retrieval.

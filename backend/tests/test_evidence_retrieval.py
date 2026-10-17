@@ -128,6 +128,27 @@ async def test_generic_tax_introduction_is_not_usable_slab_evidence() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rebate_thresholds_are_not_mistaken_for_a_slab_table() -> None:
+    content = (
+        b"1. REBATE INFORMATION\n"
+        b"The resident individual may qualify for a rebate at taxable income up to Rs 5,00,000. "
+        b"The rebate is up to Rs 12,500, and tax can have a 5% or 20% rate."
+    )
+    store = InMemoryContentStore({"tax-rebate": content})
+    record = source_record("tax", "tax-rebate", content)
+
+    passages = await retrieve_domain_passages(
+        "tax",
+        "How do income tax slabs work for individuals?",
+        [record],
+        store,
+    )
+
+    assert passages
+    assert not has_tax_slab_details(passages)
+
+
+@pytest.mark.asyncio
 async def test_prepared_sebi_source_retrieves_saving_investing_comparison() -> None:
     content = PREPARED_SEBI_SOURCE.read_bytes()
     store = InMemoryContentStore({"prepared-sebi": content})
@@ -154,6 +175,27 @@ async def test_prepared_sebi_source_retrieves_saving_investing_comparison() -> N
     assert "emergency fund" in excerpts
     assert all(passage.document_id == "prepared-sebi" for passage in passages)
     assert all(passage.source.accessed_on == date(2026, 10, 17) for passage in passages)
+
+
+@pytest.mark.asyncio
+async def test_investing_query_retrieves_investment_passage_with_suffix_variant() -> None:
+    content = (
+        b"1. INVESTMENT EDUCATION\n"
+        b"Investment products involve risk and may offer returns over time."
+    )
+    store = InMemoryContentStore({"investment-variant": content})
+    record = source_record("investment", "investment-variant", content)
+
+    passages = await retrieve_domain_passages(
+        "investment",
+        "What does investing involve?",
+        [record],
+        store,
+    )
+
+    assert passages
+    assert passages[0].document_id == "investment-variant"
+    assert "Investment products involve risk" in passages[0].excerpt
 
 
 @pytest.mark.asyncio

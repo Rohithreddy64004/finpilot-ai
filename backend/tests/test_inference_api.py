@@ -284,8 +284,16 @@ def source_record(domain: ExpertName, document_id: str) -> SourceDocumentRecord:
 
 
 @pytest.fixture(autouse=True)
-def clear_dependency_overrides():
+def clear_dependency_overrides(monkeypatch: pytest.MonkeyPatch):
+    from backend.app.rate_limit import InMemoryRateLimiter
+
     app.dependency_overrides.clear()
+    monkeypatch.setattr(
+        app.state,
+        "api_rate_limiter",
+        InMemoryRateLimiter(max_requests=10_000, window_seconds=60),
+        raising=False,
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -690,7 +698,8 @@ async def test_registered_document_without_a_matching_local_copy_is_unavailable(
         )
 
     assert response.status_code == 503
-    assert "text is not available" in response.json()["detail"]
+    assert "Source content unavailable" in response.json()["detail"]
+    assert "not present in the local content store" in response.json()["detail"]
     assert nugen.completion_calls == 0
 
 
@@ -1021,3 +1030,28 @@ async def test_nugen_errors_are_mapped_safely_without_secrets(
 
     assert response.status_code == expected_status
     assert "fixture-secret" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_inference_rate_limit_returns_429_before_second_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.rate_limit import InMemoryRateLimiter
+
+    nugen = FakeNugenClient()
+    setup_dependencies(
+        client=nugen,
+        repository=MemoryDocumentRepository([source_record("tax", "tax-source")]),
+    )
+    limiter = InMemoryRateLimiter(max_requests=1, window_seconds=60)
+    monkeypatch.setattr(app.state, "api_rate_limiter", limiter, raising=False)
+    payload = {"domain": "tax", "question": "What is a tax rebate?"}
+
+    async with await make_client() as client:
+        first = await client.post("/api/inference", json=payload)
+        second = await client.post("/api/inference", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.headers.get("retry-after")
+    assert nugen.completion_calls == 1
