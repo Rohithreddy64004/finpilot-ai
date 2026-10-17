@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from backend.app.config import get_settings
 from backend.app.content_seeding import seed_registered_content
@@ -30,5 +37,11 @@ async def _run() -> int:
         await repository.close()
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args()
+    return asyncio.run(_run())
+
+
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(_run()))
+    raise SystemExit(main())

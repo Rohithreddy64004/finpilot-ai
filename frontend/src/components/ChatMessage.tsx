@@ -63,7 +63,7 @@ export function ChatMessage({ entry, onRetry, onFeedback, retryDisabled = false 
                 {entry.response.source_grounding_supported ? 'Source passages used' : 'Source grounding unavailable'}
               </StatusBadge>
               <StatusBadge tone={entry.response.alignment_status === 'aligned' ? 'positive' : 'neutral'}>
-                {entry.response.alignment_status === 'aligned' ? 'Aligned model' : 'Base model'}
+                {entry.response.alignment_status === 'aligned' ? 'Aligned model' : 'Base model (not aligned)'}
               </StatusBadge>
               <span className="alignment-note">Model alignment does not verify answer correctness.</span>
             </div>

@@ -5,6 +5,7 @@ import pytest
 
 from backend.app.config import Settings
 from backend.app.content_seeding import seed_registered_content
+from backend.app import main as main_module
 from backend.app.schemas import SourceDocumentRecord
 from backend.app.source_content_store import LocalSourceContentStore
 
@@ -103,3 +104,33 @@ async def test_seed_skips_invalid_utf8_without_writing(tmp_path: Path) -> None:
 
     assert result.skipped_invalid_text == 1
     assert await store.get("insurance", "invalid") is None
+
+
+@pytest.mark.asyncio
+async def test_optional_startup_seeding_failure_does_not_stop_service(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class FakeRepository:
+        def __init__(self, _settings) -> None:
+            pass
+
+        async def close(self) -> None:
+            return None
+
+    async def fail_seed(*_args, **_kwargs):
+        raise RuntimeError("private database connection detail")
+
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        Settings(_env_file=None, seed_content_on_startup=True),
+    )
+    monkeypatch.setattr(main_module, "MongoSourceDocumentRepository", FakeRepository)
+    monkeypatch.setattr(main_module, "seed_registered_content", fail_seed)
+
+    async with main_module.lifespan(main_module.app):
+        assert True
+
+    assert "RuntimeError" in caplog.text
+    assert "private database connection detail" not in caplog.text

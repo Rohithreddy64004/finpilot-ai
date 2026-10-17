@@ -123,11 +123,12 @@ describe('FinPilot chat interface', () => {
     expect(screen.getByText(/routes one question at a time across tax, investment, and insurance/)).toBeTruthy()
   })
 
-  it('submits the chosen domain and renders real answer metadata and evidence', async () => {
+  it('lets the router choose and renders answer metadata and source evidence', async () => {
     const fetchMock = mockFetch(askFixture())
-    render(<App />)
+    const { container } = render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: /investing/i }))
+    expect(container.querySelector('.domain-selector')).toBeNull()
+    expect(screen.getByLabelText('Investment')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /what is the difference between saving and investing/i }))
     const questionInput = screen.getByRole('textbox', { name: 'Your finance question' })
     expect((questionInput as HTMLTextAreaElement).value).toBe('What is the difference between saving and investing?')
@@ -145,6 +146,12 @@ describe('FinPilot chat interface', () => {
     expect(screen.getByText('Base model (not aligned)')).toBeTruthy()
     fireEvent.click(screen.getByText(/Sources & evidence/))
     expect(screen.getByText(/Diversification can reduce the effect/)).toBeTruthy()
+    expect(screen.getAllByText(/SEBI/).length).toBeGreaterThan(0)
+    expect(screen.getByText('Retrieved 2026-10-15')).toBeTruthy()
+    const sebiSourceLink = screen.getAllByRole('link').find(
+      (link) => link.getAttribute('href') === 'https://example.gov.in/guide',
+    )
+    expect(sebiSourceLink).toBeTruthy()
     expect(screen.getByText('Not a substitute for personal financial advice.')).toBeTruthy()
     expect(screen.queryByText('FinPilot AI provides general financial education, not licensed advice.')).toBeNull()
   })
@@ -174,7 +181,7 @@ describe('FinPilot chat interface', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
 
-    expect((await screen.findByRole('alert')).textContent).toContain('FinPilot could not complete the request.')
+    expect((await screen.findByRole('alert')).textContent).toContain('FinPilot service is not ready')
     expect(screen.queryByText('internal server traceback')).toBeNull()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
@@ -250,7 +257,7 @@ describe('FinPilot chat interface', () => {
     await expectAnswerVisible()
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
 
-    expect(screen.getByText('Make sense of Indian tax.')).toBeTruthy()
+    expect(screen.getByText('Make sense of personal finance.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /what is a tax rebate/i }))
     expect(screen.getAllByText(/Diversification spreads exposure across investments/)
       .some((element) => element.closest('.answer-copy'))).toBe(true)
@@ -282,6 +289,47 @@ describe('FinPilot chat interface', () => {
     expect(citation.getAttribute('href')).toBe('#evidence-S1')
     fireEvent.click(citation)
     expect(screen.getByText(/Sources & evidence \(1\)/).closest('details')?.open).toBe(true)
+  })
+
+  it('orders source cards by citation ID and keeps each URL tied to its passage', async () => {
+    const { EvidencePanel } = await import('./components/EvidencePanel')
+    const base = answerFixture().evidence?.[0]
+    if (!base) throw new Error('Fixture evidence is required')
+    const second = {
+      ...base,
+      citation_id: 'S2',
+      passage_id: 'investment:fixture:2',
+      document_id: 'document-second',
+      document_name: 'Second SEBI guide',
+      source: {
+        title: 'Second source title',
+        publisher: 'SEBI Investor',
+        url: 'https://investor.sebi.gov.in/second-source',
+        accessed_on: '2026-10-17',
+      },
+    }
+    const first = {
+      ...base,
+      citation_id: 'S1',
+      passage_id: 'investment:fixture:1',
+      document_name: 'First SEBI guide',
+      source: {
+        title: 'First source title',
+        publisher: 'SEBI Investor',
+        url: 'https://investor.sebi.gov.in/first-source',
+        accessed_on: '2026-10-16',
+      },
+    }
+    const { container } = render(<EvidencePanel evidence={[second, first]} />)
+    fireEvent.click(screen.getByText(/Sources & evidence \(2\)/))
+
+    const cards = Array.from(container.querySelectorAll('.evidence-item'))
+    expect(cards.map((card) => card.id)).toEqual(['evidence-S1', 'evidence-S2'])
+    expect(cards[0].textContent).toContain('First source title')
+    expect(cards[1].querySelector('a')?.getAttribute('href')).toBe(
+      'https://investor.sebi.gov.in/second-source',
+    )
+    expect(cards[0].textContent).toContain('Retrieved 2026-10-16')
   })
 
   it('shows a source-date warning beside the answer instead of hiding it in collapsed limitations', async () => {
@@ -320,5 +368,41 @@ describe('FinPilot chat interface', () => {
     expect(container.querySelector('.limitations-details')).toBeNull()
     expect(container.querySelector('.source-link')).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Claim verification' })).toBeNull()
+  })
+
+  it('labels unavailable source grounding without implying evidence was used', async () => {
+    const { ChatMessage } = await import('./components/ChatMessage')
+    const response = answerFixture('tax')
+    response.answer = 'The active source does not contain the requested rates.'
+    response.evidence = []
+    response.source_grounding_supported = false
+    response.source_grounding_note = 'No relevant local passage matched the question.'
+
+    render(<ChatMessage entry={{
+      id: 'assistant-no-evidence', role: 'assistant', content: response.answer, response,
+    }} />)
+
+    expect(screen.getByText('Source grounding unavailable')).toBeTruthy()
+    expect(screen.getByText('No relevant local passage matched the question.')).toBeTruthy()
+    expect(screen.queryByText('Sources & evidence (0)')).toBeNull()
+  })
+
+  it('shows source-content and timeout errors clearly for expert results', async () => {
+    const { AskResponsePanel } = await import('./components/AskResponsePanel')
+    const response = askFixture('insurance')
+    response.experts[0].status = 'error'
+    response.experts[0].error = 'Source content unavailable: the insurance text is missing.'
+    const view = render(<AskResponsePanel response={response} />)
+    expect(screen.getByRole('status').textContent).toBe(
+      'Source content unavailable: the insurance text is missing.',
+    )
+
+    view.rerender(<AskResponsePanel response={{
+      ...response,
+      experts: [{ ...response.experts[0], error: 'The request timed out after 45 seconds.' }],
+    }} />)
+    expect(screen.getByRole('status').textContent).toBe(
+      'Expert timed out. The request timed out after 45 seconds.',
+    )
   })
 })

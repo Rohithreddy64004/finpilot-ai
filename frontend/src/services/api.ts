@@ -239,6 +239,19 @@ function detailMessage(payload: unknown): string | undefined {
 }
 
 function errorForStatus(status: number, payload: unknown): string {
+  if (status === 429) {
+    return 'FinPilot is rate limited (HTTP 429). Wait briefly before sending another question.'
+  }
+  if (status === 503) {
+    const safeDetail = detailMessage(payload)
+    if (safeDetail && /source content unavailable/i.test(safeDetail)) {
+      return 'Source content unavailable (HTTP 503). Restore the verified local source text, then retry.'
+    }
+    return 'FinPilot service is not ready (HTTP 503). Check the active source set and server configuration.'
+  }
+  if (status === 504) {
+    return 'The FinPilot or Nugen request timed out (HTTP 504). Please try again.'
+  }
   if (status >= 500) {
     return 'FinPilot could not complete the request. Check that the backend is running and configured, then try again.'
   }

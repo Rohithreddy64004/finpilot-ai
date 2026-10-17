@@ -7,7 +7,9 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from backend.app.schemas import ExpertName, SourceDocumentRecord, SourceReference
 from backend.app.source_content_store import LocalSourceContentStore
@@ -34,12 +36,27 @@ _HEADING_PATTERN = re.compile(
     r"(?m)^\s*\d+\.\s+[A-Z][A-Z0-9 /&(),'-]*(?=\s+[A-Z][a-z])"
 )
 _CITATION_REFERENCE = re.compile(r"\[(S\d+)\]")
+_SOURCE_FIELDS = {
+    "source": re.compile(r"^Source:\s*(\S+)\s*$", re.IGNORECASE),
+    "accessed": re.compile(r"^Accessed:\s*(\d{4}-\d{2}-\d{2})\s*$", re.IGNORECASE),
+    "title": re.compile(r"^Source title:\s*(.+?)\s*$", re.IGNORECASE),
+    "publisher": re.compile(r"^Publisher:\s*(.+?)\s*$", re.IGNORECASE),
+}
+_SOURCE_FIELD_NAMES = {
+    "Source", "Accessed", "Source title", "Publisher",
+}
+_OFFICIAL_SOURCE_HOSTS: dict[ExpertName, tuple[str, ...]] = {
+    "tax": ("incometax.gov.in", "incometaxindia.gov.in"),
+    "investment": ("investor.sebi.gov.in", "sebi.gov.in"),
+    "insurance": ("irdai.gov.in",),
+}
 _TAX_SLAB_QUERY = re.compile(
     r"\b(?:tax\s+)?slabs?\b|\b(?:tax\s+)?brackets?\b|\bslab\s+rates?\b|\btax\s+rates?\b",
     re.IGNORECASE,
 )
 _TAX_SLAB_TERMS = re.compile(
-    r"\b(?:(?:old|new)\s+regime\s+slabs?|(?:tax\s+)?slab\s+tables?|(?:tax\s+)?brackets?)\b",
+    r"\b(?:(?:old|new)[ -]regime(?:\s+ordinary)?\s+slabs?|"
+    r"(?:tax\s+)?slab\s+tables?|(?:tax\s+)?brackets?)\b",
     re.IGNORECASE,
 )
 _TAX_REGIME_COMPARISON = re.compile(
@@ -120,35 +137,115 @@ def _sections(text: str) -> list[str]:
     sections: list[str] = []
     for index, start in enumerate(starts):
         end = starts[index + 1] if index + 1 < len(starts) else len(text)
-        section = re.sub(r"\s+", " ", text[start:end]).strip()
+        section = text[start:end].strip()
         if section:
             sections.append(section)
     return sections
 
 
+def _section_source_reference(
+    section: str,
+    domain: ExpertName,
+    fallback: SourceReference,
+) -> SourceReference:
+    """Use section provenance when present; otherwise retain legacy record metadata."""
+
+    fields: dict[str, str] = {}
+    for line in section.splitlines():
+        stripped = line.strip()
+        for field_name, pattern in _SOURCE_FIELDS.items():
+            match = pattern.fullmatch(stripped)
+            if match:
+                fields[field_name] = match.group(1).strip()
+
+    raw_url = fields.get("source")
+    if raw_url is None:
+        return fallback
+
+    parsed = urlsplit(raw_url)
+    allowed_hosts = _OFFICIAL_SOURCE_HOSTS[domain]
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or not any(
+            parsed.hostname.lower() == allowed
+            or parsed.hostname.lower().endswith("." + allowed)
+            for allowed in allowed_hosts
+        )
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise SourceContentUnavailableError(
+            f"Source content unavailable: a {domain} section contains an invalid official source URL."
+        )
+
+    raw_date = fields.get("accessed")
+    if raw_date is None:
+        raise SourceContentUnavailableError(
+            f"Source content unavailable: a {domain} section is missing its access date."
+        )
+    try:
+        accessed_on = date.fromisoformat(raw_date)
+    except ValueError:
+        raise SourceContentUnavailableError(
+            f"Source content unavailable: a {domain} section has an invalid access date."
+        ) from None
+
+    title = fields.get("title")
+    publisher = fields.get("publisher")
+    if not title or not publisher:
+        raise SourceContentUnavailableError(
+            f"Source content unavailable: a {domain} section is missing its source title or publisher."
+        )
+    return SourceReference(
+        title=title,
+        publisher=publisher,
+        url=raw_url,
+        accessed_on=accessed_on,
+    )
+
+
+def _without_source_fields(section: str) -> str:
+    kept_lines = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if any(pattern.fullmatch(stripped) for pattern in _SOURCE_FIELDS.values()):
+            continue
+        kept_lines.append(line)
+    return " ".join(re.sub(r"\s+", " ", line).strip() for line in kept_lines if line.strip())
+
+
+def _split_section_passages(section: str, *, max_chars: int = 1_100) -> list[str]:
+    passages: list[str] = []
+    sentences = re.split(r"(?<=[.!?])\s+", section)
+    current = ""
+    for sentence in sentences:
+        if len(sentence) > max_chars:
+            if current:
+                passages.append(current.strip())
+                current = ""
+            for offset in range(0, len(sentence), max_chars):
+                part = sentence[offset : offset + max_chars].strip()
+                if part:
+                    passages.append(part)
+            continue
+        candidate = f"{current} {sentence}".strip()
+        if current and len(candidate) > max_chars:
+            passages.append(current.strip())
+            current = sentence
+        else:
+            current = candidate
+    if current:
+        passages.append(current.strip())
+    return passages
+
+
 def _split_passages(text: str, *, max_chars: int = 1_100) -> list[str]:
     passages: list[str] = []
     for section in _sections(text):
-        sentences = re.split(r"(?<=[.!?])\s+", section)
-        current = ""
-        for sentence in sentences:
-            if len(sentence) > max_chars:
-                if current:
-                    passages.append(current.strip())
-                    current = ""
-                for offset in range(0, len(sentence), max_chars):
-                    part = sentence[offset : offset + max_chars].strip()
-                    if part:
-                        passages.append(part)
-                continue
-            candidate = f"{current} {sentence}".strip()
-            if current and len(candidate) > max_chars:
-                passages.append(current.strip())
-                current = sentence
-            else:
-                current = candidate
-        if current:
-            passages.append(current.strip())
+        passages.extend(_split_section_passages(_without_source_fields(section), max_chars=max_chars))
     return passages
 
 
@@ -208,8 +305,8 @@ def _contains_tax_slab_details(excerpt: str) -> bool:
 def _rank_passages(
     domain: ExpertName,
     question: str,
-    candidates: list[tuple[SourceDocumentRecord, int, str]],
-) -> list[tuple[float, tuple[SourceDocumentRecord, int, str]]]:
+    candidates: list[tuple[SourceDocumentRecord, int, str, SourceReference]],
+) -> list[tuple[float, tuple[SourceDocumentRecord, int, str, SourceReference]]]:
     """Rank lexical matches and promote source passages with direct slab data.
 
     FinPilot currently has no configured embedding index. For tax-slab queries,
@@ -228,7 +325,7 @@ def _rank_passages(
     base_max = max(base_scores, default=0.0) or 1.0
     expanded_max = max(expanded_scores, default=0.0) or 1.0
 
-    ranked: list[tuple[float, tuple[SourceDocumentRecord, int, str]]] = []
+    ranked: list[tuple[float, tuple[SourceDocumentRecord, int, str, SourceReference]]] = []
     for index, candidate in enumerate(candidates):
         score = base_scores[index]
         if slab_query:
@@ -237,7 +334,9 @@ def _rank_passages(
             score += 0.35 * expanded_scores[index] * base_max / expanded_max
             excerpt = candidate[2]
             if _contains_tax_slab_details(excerpt):
-                score += max(base_max, 1.0) * 2.0
+                # Explicit rate tables outrank rebate, cess, and general regime
+                # passages that repeat "slab" or "rate" vocabulary.
+                score += max(base_max, 1.0) * 4.0
             elif _TAX_REGIME_COMPARISON.search(excerpt) and re.search(
                 r"\b(?:deductions?|exemptions?|taxable income)\b",
                 excerpt,
@@ -318,7 +417,7 @@ async def retrieve_domain_passages(
     """
 
     root = corpus_root or _ROOT
-    candidates: list[tuple[SourceDocumentRecord, int, str]] = []
+    candidates: list[tuple[SourceDocumentRecord, int, str, SourceReference]] = []
     if any(record.domain != domain for record in documents):
         raise SourceContentUnavailableError(
             "The selected source set contains a document from another expert domain."
@@ -335,15 +434,26 @@ async def retrieve_domain_passages(
             corpus_root=root,
         )
 
-        for passage_index, excerpt in enumerate(_split_passages(text), start=1):
-            if _tokens(excerpt):
-                candidates.append((record, passage_index, excerpt))
+        fallback_reference = SourceReference(
+            title=record.document_name,
+            publisher=DOMAIN_PUBLISHERS[domain],
+            url=record.source_url,
+            accessed_on=record.retrieved_on,
+        )
+        passage_index = 0
+        for section in _sections(text):
+            source_reference = _section_source_reference(section, domain, fallback_reference)
+            section_passages = _split_section_passages(_without_source_fields(section))
+            for excerpt in section_passages:
+                if _tokens(excerpt):
+                    passage_index += 1
+                    candidates.append((record, passage_index, excerpt, source_reference))
 
     ranked = _rank_passages(domain, question, candidates)
 
     selected: list[RetrievedPassage] = []
     used_characters = 0
-    for score, (record, passage_index, excerpt) in ranked:
+    for score, (record, passage_index, excerpt, source_reference) in ranked:
         if len(selected) >= top_k:
             break
         if selected and used_characters + len(excerpt) > max_context_chars:
@@ -356,12 +466,7 @@ async def retrieve_domain_passages(
                 document_id=record.document_id,
                 document_name=record.document_name,
                 excerpt=excerpt,
-                source=SourceReference(
-                    title=record.document_name,
-                    publisher=DOMAIN_PUBLISHERS[domain],
-                    url=record.source_url,
-                    accessed_on=record.retrieved_on,
-                ),
+                source=source_reference,
                 score=score,
             )
         )

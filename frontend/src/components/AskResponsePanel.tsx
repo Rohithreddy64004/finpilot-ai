@@ -61,7 +61,7 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
                 </span>
               </summary>
               {expert.status === 'error' ? (
-                <p className="expert-error" role="status">{expert.error || 'This expert could not complete the request.'}</p>
+                <p className="expert-error" role="status">{expertErrorMessage(expert.error)}</p>
               ) : (
                 <div className="expert-card-body">
                   <div className="answer-topline">
@@ -153,4 +153,15 @@ function verificationLabel(status: AskResponse['final_answer_claim_verification_
     case 'unverified': return 'Unverified'
     case 'not_performed': return 'Not performed'
   }
+}
+
+function expertErrorMessage(error: string | null | undefined): string {
+  const message = error || 'This expert could not complete the request.'
+  if (/timeout|timed out|exceeded the configured request timeout/i.test(message)) {
+    return /^expert timed out/i.test(message) ? message : `Expert timed out. ${message}`
+  }
+  if (/source content unavailable/i.test(message)) {
+    return /^source content unavailable/i.test(message) ? message : `Source content unavailable. ${message}`
+  }
+  return message
 }

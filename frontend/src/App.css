@@ -53,22 +53,7 @@
 .model-note strong, .model-note small { display: block; }
 .model-note strong { color: #cdd8e4; font-size: 10px; font-weight: 600; }
 .model-note small { margin-top: 3px; color: #788a9f; font-size: 9px; }
-.domain-panel { margin-bottom: 18px; padding: 17px 18px 15px; border: 1px solid var(--line); border-radius: 13px; background: linear-gradient(130deg, rgba(17,29,46,.88), rgba(13,25,41,.76)); box-shadow: 0 12px 30px rgba(0,0,0,.09); }
-.panel-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.panel-overline { color: #6f8798; font-size: 8px; font-weight: 730; letter-spacing: .15em; }
-.panel-heading h2 { margin: 3px 0 0; color: #dce6ed; font-size: 13px; font-weight: 590; letter-spacing: -.01em; }
-.domain-step { color: #dae7ec; font-family: var(--mono); font-size: 9px; }
-.domain-step span { color: #8394a8; }
-.domain-selector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.domain-option { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 10px; border: 1px solid rgba(113,134,158,.16); border-radius: 9px; color: #a8b6c6; background: rgba(8,18,31,.48); text-align: left; cursor: pointer; transition: background .18s ease, border-color .18s ease, transform .18s ease; }
-.domain-option:hover { border-color: rgba(127,155,174,.34); background: rgba(21,37,54,.8); }
-.domain-option.is-selected { border-color: rgba(94,234,212,.47); color: #e7f5f4; background: linear-gradient(100deg, rgba(30,77,77,.32), rgba(16,39,53,.68)); box-shadow: inset 0 0 0 1px rgba(94,234,212,.06); }
-.domain-option:disabled { opacity: .58; cursor: not-allowed; }
-.domain-icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(126,149,173,.16); border-radius: 8px; color: #9aaec3; background: rgba(255,255,255,.035); }
-.domain-tax { color: #8fd7c4; }
-.domain-investment { color: #9db8ff; }
-.domain-insurance { color: #e1b990; }
-.domain-option.is-selected .domain-icon { border-color: rgba(94,234,212,.2); background: rgba(94,234,212,.08); }
+.expert-override-panel { margin-bottom: 14px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.5); }
 .expert-override { margin: 13px 0 0; padding: 10px 0 0; border: 0; border-top: 1px solid rgba(113,134,158,.14); }
 .expert-override legend { padding: 0 6px 0 0; color: #b9c9d7; font-size: 10px; font-weight: 620; }
 .expert-override p { margin: 2px 0 8px; color: #8293a6; font-size: 9px; }
@@ -76,10 +61,6 @@
 .expert-checkboxes label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid rgba(113,134,158,.16); border-radius: 7px; color: #a8b6c6; background: rgba(8,18,31,.36); font-size: 10px; cursor: pointer; }
 .expert-checkboxes input { accent-color: #52a99d; }
 .expert-override:disabled { opacity: .6; }
-.domain-copy { min-width: 0; }
-.domain-copy strong, .domain-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.domain-copy strong { font-size: 11px; font-weight: 630; }
-.domain-copy small { margin-top: 3px; color: #75869b; font-size: 9px; }
 .conversation-panel { min-height: 320px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: radial-gradient(ellipse at 52% 0%, rgba(25,47,64,.32), transparent 55%), rgba(12,23,38,.74); }
 .conversation-panel.has-messages { min-height: 280px; }
 .welcome-state { display: flex; min-height: 320px; flex-direction: column; align-items: center; justify-content: center; padding: 27px 25px 21px; text-align: center; }
@@ -259,13 +240,7 @@
   .page-heading h1 { margin-top: 10px; font-size: 32px; }
   .page-heading p { max-width: 280px; font-size: 10px; line-height: 1.5; }
   .model-note { display: none; }
-  .domain-panel { margin-bottom: 12px; padding: 13px 11px 11px; }
-  .domain-selector { gap: 5px; }
-  .domain-option { min-height: 62px; flex-direction: column; align-items: flex-start; gap: 5px; padding: 7px; }
-  .domain-icon { width: 25px; height: 25px; border-radius: 7px; }
-  .domain-icon svg { width: 14px; height: 14px; }
-  .domain-copy strong { font-size: 9px; }
-  .domain-copy small { display: none; }
+  .expert-override-panel { margin-bottom: 11px; padding-inline: 10px; }
   .conversation-panel, .welcome-state { min-height: 330px; }
   .welcome-state { justify-content: center; padding: 20px 13px; }
   .welcome-kicker { font-size: 17px; }
@@ -288,7 +263,6 @@
 @media (max-width: 380px) {
   .content-wrap { padding-inline: 10px; }
   .eyebrow { font-size: 7px; }
-  .domain-option { padding: 6px; }
   .page-footer { align-items: flex-start; flex-direction: column; }
   .page-footer span:last-child { text-align: left; }
 }
@@ -337,21 +311,7 @@
 .model-note-icon { color: #2865bd; background: #edf4ff; }
 .model-note strong { color: #273955; font-size: 12px; }
 .model-note small { color: #6f7e94; font-size: 11px; }
-.domain-panel { border-color: #dce5f0; background: rgba(255,255,255,.94); box-shadow: 0 8px 22px rgba(37,63,103,.055); }
-.panel-overline { color: #61738d; font-size: 10px; }
-.panel-heading h2 { color: #22344f; font-size: 15px; }
-.domain-step { color: #3b4e69; font-size: 11px; }
-.domain-step span { color: #7a899e; }
-.domain-option { min-height: 60px; border-color: #dce5f0; color: #3d506b; background: #f8faff; }
-.domain-option:hover { border-color: #adc4e5; background: #f1f6ff; }
-.domain-option.is-selected { border-color: #88abe0; color: #194f97; background: linear-gradient(100deg, #edf4ff, #f7faff); box-shadow: inset 0 0 0 1px rgba(39,98,184,.08); }
-.domain-icon { border-color: #dce5f0; color: #4b6281; background: #ffffff; }
-.domain-tax { color: #2765bd; }
-.domain-investment { color: #365fa8; }
-.domain-insurance { color: #7a5a2c; }
-.domain-option.is-selected .domain-icon { border-color: #c9daf4; background: #eaf2ff; }
-.domain-copy strong { font-size: 13px; }
-.domain-copy small { color: #6c7b91; font-size: 11px; }
+.expert-override-panel { border-color: #dce5f0; background: rgba(255,255,255,.72); }
 .conversation-panel { border-color: #dce5f0; background: rgba(255,255,255,.86); box-shadow: 0 7px 24px rgba(39,67,110,.04); }
 .welcome-icon { border-color: #c5d8f4; color: #245ea9; background: linear-gradient(150deg, #e7f0ff, #f8fbff); box-shadow: 0 0 28px rgba(50,104,179,.08); }
 .orbit-ring { border-color: rgba(52,101,171,.16); }

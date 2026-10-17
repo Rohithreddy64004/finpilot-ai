@@ -1,4 +1,4 @@
-from fastapi.testclient import TestClient
+import httpx
 from pydantic import ValidationError
 import pytest
 
@@ -20,9 +20,11 @@ def test_question_length_is_capped(payload: dict) -> None:
         schema(**payload)
 
 
-def test_oversized_ask_body_is_rejected_before_request_parsing() -> None:
-    with TestClient(app) as client:
-        response = client.post(
+@pytest.mark.asyncio
+async def test_oversized_ask_body_is_rejected_before_request_parsing() -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
             "/api/ask",
             content=b"x" * (MAX_INFERENCE_BODY_BYTES + 1),
             headers={"content-type": "application/json"},

@@ -4,7 +4,7 @@ export interface ChatEntry {
   id: string
   role: 'user' | 'assistant'
   content: string
-  domain: Domain
+  domain?: Domain
   pending?: boolean
   error?: boolean
   response?: InferenceResponse

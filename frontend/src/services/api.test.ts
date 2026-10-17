@@ -126,7 +126,7 @@ describe('requestInference', () => {
     }, 503)))
 
     await expect(requestInference({ domain: 'insurance', question: 'Explain a waiting period.' })).rejects.toThrow(
-      'FinPilot could not complete the request. Check that the backend is running and configured, then try again.',
+      'FinPilot service is not ready (HTTP 503). Check the active source set and server configuration.',
     )
   })
 
@@ -145,6 +145,30 @@ describe('requestInference', () => {
 
     await expect(requestInference({ domain: 'tax', question: 'Explain a tax rebate.' })).rejects.toThrow(
       'Cannot reach FinPilot through the same-origin API path.',
+    )
+  })
+
+  it('distinguishes unavailable source content, service readiness, rate limits, and upstream timeout', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(mockedResponse({
+      detail: 'Source content unavailable: registered tax source text is missing.',
+    }, 503)))
+    await expect(requestInference({ domain: 'tax', question: 'Explain tax slabs.' })).rejects.toThrow(
+      'Source content unavailable (HTTP 503). Restore the verified local source text, then retry.',
+    )
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(mockedResponse({ detail: 'not ready' }, 503)))
+    await expect(requestInference({ domain: 'tax', question: 'Explain tax slabs.' })).rejects.toThrow(
+      'FinPilot service is not ready (HTTP 503). Check the active source set and server configuration.',
+    )
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(mockedResponse({ detail: 'slow down' }, 429)))
+    await expect(requestInference({ domain: 'tax', question: 'Explain tax slabs.' })).rejects.toThrow(
+      'FinPilot is rate limited (HTTP 429). Wait briefly before sending another question.',
+    )
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(mockedResponse({ detail: 'timeout' }, 504)))
+    await expect(requestInference({ domain: 'tax', question: 'Explain tax slabs.' })).rejects.toThrow(
+      'The FinPilot or Nugen request timed out (HTTP 504). Please try again.',
     )
   })
 

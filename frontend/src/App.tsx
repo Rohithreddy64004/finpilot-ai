@@ -2,41 +2,20 @@ import { useMemo, useRef, useState } from 'react'
 import { Menu, Plus, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { ChatInput } from './components/ChatInput'
 import { ChatMessage } from './components/ChatMessage'
-import { DomainSelector } from './components/DomainSelector'
 import { Sidebar } from './components/Sidebar'
 import { ApiError, requestAsk, requestFeedback } from './services/api'
 import type { Domain } from './types/api'
 import type { ChatEntry, Conversation } from './types/chat'
 import './App.css'
 
-const domainContent: Record<Domain, { title: string; intro: string; questions: string[] }> = {
-  tax: {
-    title: 'Make sense of Indian tax.',
-    intro: 'Explore tax concepts with careful, source-aware explanations for India.',
-    questions: [
-      'What is the difference between a tax deduction and a rebate?',
-      'How do income tax slabs work for individuals?',
-      'What should I check before choosing a tax regime?',
-    ],
-  },
-  investment: {
-    title: 'Build investment understanding.',
-    intro: 'Learn about risk, diversification and market products in plain language.',
-    questions: [
-      'What is the difference between saving and investing?',
-      'Why does diversification matter?',
-      'What should a beginner know about mutual funds?',
-    ],
-  },
-  insurance: {
-    title: 'Understand insurance with confidence.',
-    intro: 'Get clear explanations of policy terms, cover and common exclusions.',
-    questions: [
-      'What is the difference between term and health insurance?',
-      'What should I review in a policy document?',
-      'What does a waiting period mean in health insurance?',
-    ],
-  },
+const welcomeContent = {
+  title: 'Make sense of personal finance.',
+  intro: 'Ask a question and FinPilot will route it to the relevant education experts.',
+  questions: [
+    'How do income tax slabs work for individuals?',
+    'What is the difference between saving and investing?',
+    'What does a waiting period mean in health insurance?',
+  ],
 }
 
 let nextLocalId = 0
@@ -52,7 +31,6 @@ function createConversation(): Conversation {
 function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => [createConversation()])
   const [activeConversationId, setActiveConversationId] = useState(() => conversations[0]?.id ?? '')
-  const [selectedDomain, setSelectedDomain] = useState<Domain>('tax')
   const [selectedExperts, setSelectedExperts] = useState<Domain[]>([])
   const [draft, setDraft] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -64,7 +42,6 @@ function App() {
     [activeConversationId, conversations],
   )
   const messages = activeConversation?.messages ?? []
-  const content = domainContent[selectedDomain]
 
   function startNewChat() {
     const currentIsEmpty = conversations.find((item) => item.id === activeConversationId)?.messages.length === 0
@@ -144,13 +121,11 @@ function App() {
       setActiveConversationId(conversationId)
     }
 
-    const domain = selectedDomain
     const expertOverride = [...selectedExperts]
     const userMessage: ChatEntry = {
       id: createId(),
       role: 'user',
       content: question,
-      domain,
       expertOverride,
     }
     const responseId = createId()
@@ -158,7 +133,6 @@ function App() {
       id: responseId,
       role: 'assistant',
       content: '',
-      domain,
       expertOverride,
       pending: true,
     }
@@ -235,14 +209,12 @@ function App() {
               <div>
                 <div className="eyebrow"><span className="eyebrow-line" /> FINANCIAL EDUCATION, MADE CLEAR</div>
                 <h1>Ask FinPilot<span className="heading-period">.</span></h1>
-                <p>Thoughtful answers, grounded in your selected domain sources.</p>
+                <p>Thoughtful answers, grounded in relevant domain sources.</p>
               </div>
               <div className="model-note"><span className="model-note-icon"><Sparkles size={16} /></span><span><strong>AI-assisted learning</strong><small>Every answer shows its limits</small></span></div>
             </div>
 
-            <section className="domain-panel" aria-label="Choose an expert domain">
-              <div className="panel-heading"><div><span className="panel-overline">YOUR TOPIC</span><h2>Choose a domain</h2></div><span className="domain-step">01 <span>/ 02</span></span></div>
-              <DomainSelector selected={selectedDomain} onSelect={setSelectedDomain} disabled={isSubmitting} />
+            <section className="expert-override-panel" aria-label="Expert routing options">
               <fieldset className="expert-override" disabled={isSubmitting}>
                 <legend>Choose experts (optional)</legend>
                 <p>{selectedExperts.length
@@ -268,11 +240,11 @@ function App() {
                 <div className="welcome-state">
                   <div className="welcome-orbit"><span className="orbit-ring orbit-ring-one" /><span className="orbit-ring orbit-ring-two" /><span className="welcome-icon"><Sparkles size={24} /></span><i className="orbit-dot dot-one" /><i className="orbit-dot dot-two" /></div>
                   <div className="welcome-copy">
-                    <span className="welcome-kicker">{content.title}</span>
-                    <p>{content.intro}</p>
+                    <span className="welcome-kicker">{welcomeContent.title}</span>
+                    <p>{welcomeContent.intro}</p>
                   </div>
                   <div className="suggestion-grid">
-                    {content.questions.map((question, index) => (
+                    {welcomeContent.questions.map((question, index) => (
                       <button className="suggestion-card" type="button" key={question} onClick={() => setDraft(question)}>
                         <span className="suggestion-number">0{index + 1}</span><span>{question}</span><span className="suggestion-arrow">↗</span>
                       </button>

@@ -28,6 +28,13 @@ class AlignmentJobRepository(Protocol):
         model_id: str,
     ) -> AlignmentJobRecord | None: ...
 
+    async def list_by_domain(
+        self,
+        domain: ExpertName,
+        *,
+        limit: int = 100,
+    ) -> list[AlignmentJobRecord]: ...
+
 
 class MongoAlignmentJobRepository:
     """Async MongoDB storage, separate from the immutable source-document registry."""
@@ -116,6 +123,31 @@ class MongoAlignmentJobRepository:
         except Exception:
             raise AlignmentJobStoreError(
                 "The domain alignment record could not be read."
+            ) from None
+
+    async def list_by_domain(
+        self,
+        domain: ExpertName,
+        *,
+        limit: int = 100,
+    ) -> list[AlignmentJobRecord]:
+        try:
+            cursor = (
+                self._collection()
+                .find({"domain": domain})
+                .sort("updated_at", -1)
+                .limit(limit)
+            )
+            rows = await cursor.to_list(length=limit)
+            return [
+                AlignmentJobRecord.model_validate({key: value for key, value in row.items() if key != "_id"})
+                for row in rows
+            ]
+        except AlignmentJobStoreError:
+            raise
+        except Exception:
+            raise AlignmentJobStoreError(
+                "The alignment tracking records could not be listed."
             ) from None
 
     async def close(self) -> None:

@@ -246,11 +246,12 @@ class EmptyContentStore:
 
 
 class FixedContentStore:
-    def __init__(self, content: bytes) -> None:
+    def __init__(self, content: bytes, *, domain: ExpertName | None = "tax") -> None:
         self.content = content
+        self.domain = domain
 
     async def get(self, domain: ExpertName, document_id: str) -> bytes | None:
-        return self.content if domain == "tax" else None
+        return self.content if self.domain is None or domain == self.domain else None
 
 
 class StaticClaimVerifier:
@@ -370,11 +371,13 @@ async def test_inference_uses_selected_domain_and_returns_passage_grounding(
     assert payload["independent_verification_performed"] is False
     assert payload["evidence"][0]["document_id"] == f"{domain}-source"
     assert payload["evidence"][0]["citation_id"] == "S1"
-    assert payload["source_references"][0]["url"] == {
-        "tax": "https://www.incometax.gov.in/iec/foportal/",
-        "investment": "https://investor.sebi.gov.in/",
-        "insurance": "https://irdai.gov.in/policyholders",
-    }[domain]
+    source_hosts = {
+        "tax": "incometax.gov.in",
+        "investment": "sebi.gov.in",
+        "insurance": "irdai.gov.in",
+    }
+    assert source_hosts[domain] in payload["source_references"][0]["url"]
+    assert payload["evidence"][0]["source"]["accessed_on"] == "2026-10-17"
     assert not any("base model" in item or "general education" in item for item in payload["limitations"])
     assert nugen.status_calls == [f"{domain}-source"]
     assert nugen.completion_calls == 1
@@ -593,7 +596,7 @@ async def test_tax_slab_draft_with_unsupported_numeric_values_is_withheld() -> N
     assert "99%" not in payload["answer"]
     assert "99,99,999" not in payload["answer"]
     assert "withheld" in payload["answer"]
-    assert "OLD REGIME SLABS" in payload["evidence"][0]["excerpt"]
+    assert "OLD-REGIME ORDINARY SLABS" in payload["evidence"][0]["excerpt"]
     assert nugen.completion_calls == 1
     system_message = nugen.completion_request.messages[0].content
     assert "Explain progressive taxation" in system_message
@@ -608,8 +611,16 @@ async def test_tax_slab_draft_with_unsupported_numeric_values_is_withheld() -> N
 async def test_source_date_mismatch_is_separate_from_grounding_and_claim_support() -> None:
     nugen = FakeNugenClient()
     nugen.completion_text = "An SIP does not guarantee returns. [S1]"
+    content = (
+        "1. INVESTMENT SIP EDUCATION\n"
+        "Source: https://investor.sebi.gov.in/pdf/downloadable-documents/Financial%20Education%20Booklet%20-%20English.pdf\n"
+        "Accessed: 2020-01-01\n"
+        "Source title: Financial Education Booklet\n"
+        "Publisher: SEBI Investor\n\n"
+        "An SIP does not protect the investor from market losses, guarantee returns, or ensure that the chosen fund is appropriate."
+    ).encode("utf-8")
     old_source = source_record("investment", "investment-source").model_copy(
-        update={"retrieved_on": date(2020, 1, 1)}
+        update={"retrieved_on": date(2020, 1, 1), "size_bytes": len(content)}
     )
     setup_dependencies(
         client=nugen,
@@ -621,7 +632,7 @@ async def test_source_date_mismatch_is_separate_from_grounding_and_claim_support
                     {
                         "evidence_id": "S1",
                         "quote": (
-                            "an SIP does not protect the investor from market losses, "
+                            "An SIP does not protect the investor from market losses, "
                             "guarantee returns, or ensure that the chosen fund is appropriate."
                         ),
                     }
@@ -629,6 +640,9 @@ async def test_source_date_mismatch_is_separate_from_grounding_and_claim_support
             }
         ),
     )
+    app.dependency_overrides[get_source_content_store] = lambda: FixedContentStore(
+        content, domain="investment"
+    )  # type: ignore[assignment]
 
     async with await make_client() as client:
         response = await client.post(
@@ -732,7 +746,9 @@ async def test_unsupported_model_output_is_withheld(
     assert payload["source_grounding_supported"] is False
     assert completion_text.split(" [S9]")[0] not in payload["answer"]
     assert "verifiable citations" in payload["answer"]
-    assert payload["evidence"][0]["source"]["url"] == "https://investor.sebi.gov.in/"
+    assert payload["evidence"][0]["source"]["url"].startswith(
+        "https://investor.sebi.gov.in/"
+    )
 
 
 @pytest.mark.asyncio
@@ -920,7 +936,7 @@ async def test_deployed_aligned_model_without_domain_job_record_is_rejected() ->
                 "evidence": [
                     {
                         "evidence_id": "S1",
-                        "quote": "A Systematic Investment Plan (SIP) is a method of investing a fixed amount at regular intervals in a mutual fund scheme.",
+                        "quote": "SEBI\u2019s booklet describes a Systematic Investment Plan, or SIP, as a way to invest a fixed amount regularly in a mutual-fund scheme.",
                     }
                 ],
             },
@@ -934,7 +950,7 @@ async def test_deployed_aligned_model_without_domain_job_record_is_rejected() ->
                 "evidence": [
                     {
                         "evidence_id": "S1",
-                        "quote": "an SIP does not protect the investor from market losses, guarantee returns, or ensure that the chosen fund is appropriate.",
+                        "quote": "Regular contributions can create a routine, but they do not guarantee a profit, remove market fluctuation, or prove that a chosen scheme fits a person\u2019s goals.",
                     }
                 ],
             },

@@ -55,7 +55,7 @@ function SafeSourceLink({ source }: { source: SourceReference }) {
   }
   return (
     <a className="source-link" href={safeUrl.href} target="_blank" rel="noopener noreferrer">
-      Open source <ArrowUpRight size={13} aria-hidden="true" />
+      <span>{safeUrl.href}</span><ArrowUpRight size={13} aria-hidden="true" />
     </a>
   )
 }
@@ -67,6 +67,9 @@ export function EvidencePanel({
 }: EvidencePanelProps) {
   const hasContent = evidence.length > 0 || references.length > 0 || claims.length > 0
   if (!hasContent) return null
+  const orderedEvidence = [...evidence].sort(
+    (left, right) => Number(left.citation_id.slice(1)) - Number(right.citation_id.slice(1)),
+  )
 
   return (
     <div className="answer-details">
@@ -108,13 +111,17 @@ export function EvidencePanel({
           </summary>
           {evidence.length > 0 && (
             <div className="evidence-list">
-              {evidence.map((item) => (
+              {orderedEvidence.map((item) => (
                 <article className="evidence-item" id={`evidence-${item.citation_id}`} key={item.passage_id}>
                   <div className="evidence-meta">
                     <StatusBadge tone="teal">[{item.citation_id}]</StatusBadge>
                     <span>{item.document_name}</span>
                   </div>
-                  <MarkdownContent className="evidence-excerpt" text={item.excerpt} linkCitations={false} />
+                  <MarkdownContent
+                    className="evidence-excerpt"
+                    text={item.excerpt.length > 420 ? `${item.excerpt.slice(0, 417).trimEnd()}…` : item.excerpt}
+                    linkCitations={false}
+                  />
                   <div className="source-meta">
                     <span>{item.source.title}{item.source.publisher ? ` · ${item.source.publisher}` : ''}</span>
                     {item.source.accessed_on && <span>Retrieved {item.source.accessed_on}</span>}

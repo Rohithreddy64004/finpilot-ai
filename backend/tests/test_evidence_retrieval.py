@@ -30,6 +30,47 @@ TAX_SOURCE_URL = (
 )
 
 
+@pytest.mark.parametrize(
+    ("domain", "filename", "question", "expected_url_part"),
+    [
+        (
+            "tax",
+            "tax_expert.txt",
+            "How do income tax slabs work for individuals?",
+            "incometax.gov.in/iec/foportal/help/individual/return-applicable-1",
+        ),
+        (
+            "investment",
+            "investment_expert.txt",
+            "Does an SIP guarantee returns?",
+            "investor.sebi.gov.in/pdf/downloadable-documents/Financial%20Education",
+        ),
+        (
+            "insurance",
+            "insurance_expert.txt",
+            "What does a health insurance waiting period mean?",
+            "irdai.gov.in/health-dept",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_each_expert_citation_uses_its_official_section_provenance(
+    domain: ExpertName,
+    filename: str,
+    question: str,
+    expected_url_part: str,
+) -> None:
+    content = (Path(__file__).resolve().parents[2] / "knowledge_bases" / filename).read_bytes()
+    record = source_record(domain, f"{domain}-current-corpus", content)
+    store = InMemoryContentStore({record.document_id: content})
+
+    passages = await retrieve_domain_passages(domain, question, [record], store)
+
+    assert passages
+    assert expected_url_part in str(passages[0].source.url)
+    assert passages[0].source.accessed_on == date(2026, 10, 17)
+
+
 class InMemoryContentStore:
     def __init__(self, content_by_id: dict[str, bytes]) -> None:
         self.content_by_id = content_by_id
@@ -100,10 +141,55 @@ async def test_broad_tax_slab_question_ranks_actual_rate_tables_first() -> None:
         top_k=5,
     )
 
-    assert "OLD REGIME SLABS" in passages[0].excerpt
-    assert "NEW REGIME SLABS" in passages[1].excerpt
+    assert "OLD-REGIME ORDINARY SLABS" in passages[0].excerpt
+    assert "NEW-REGIME ORDINARY SLABS" in passages[1].excerpt
     assert has_tax_slab_details(passages)
-    assert any("HOW THE REGIMES DIFFER" in passage.excerpt for passage in passages)
+    assert "OLD-REGIME ORDINARY SLABS" in passages[0].excerpt
+    assert "NEW-REGIME ORDINARY SLABS" in passages[1].excerpt
+
+
+@pytest.mark.asyncio
+async def test_passage_citation_uses_its_section_source_and_access_date() -> None:
+    content = (
+        "1. INVESTMENT RISK AND LIQUIDITY\n"
+        "Source: https://investor.sebi.gov.in/investment-thingsbeforeinv.html\n"
+        "Accessed: 2026-10-17\n"
+        "Source title: Things to Consider Before Investing\n"
+        "Publisher: SEBI Investor\n\n"
+        "Investors should consider risk, liquidity, and the time available before choosing an investment."
+    ).encode("utf-8")
+    store = InMemoryContentStore({"provenance": content})
+    record = source_record("investment", "provenance", content)
+
+    passages = await retrieve_domain_passages(
+        "investment", "How should I compare risk and liquidity?", [record], store
+    )
+
+    assert len(passages) == 1
+    assert str(passages[0].source.url) == (
+        "https://investor.sebi.gov.in/investment-thingsbeforeinv.html"
+    )
+    assert passages[0].source.title == "Things to Consider Before Investing"
+    assert passages[0].source.accessed_on == date(2026, 10, 17)
+
+
+@pytest.mark.asyncio
+async def test_section_source_rejects_query_string_in_citation_url() -> None:
+    content = (
+        "1. INSURANCE HEALTH COVER\n"
+        "Source: https://irdai.gov.in/page?redirect=private\n"
+        "Accessed: 2026-10-17\n"
+        "Source title: Health cover\n"
+        "Publisher: IRDAI\n\n"
+        "Health insurance policy terms define the available cover."
+    ).encode("utf-8")
+    store = InMemoryContentStore({"bad-source": content})
+    record = source_record("insurance", "bad-source", content)
+
+    with pytest.raises(SourceContentUnavailableError, match="invalid official source URL"):
+        await retrieve_domain_passages(
+            "insurance", "What defines health insurance cover?", [record], store
+        )
 
 
 @pytest.mark.asyncio

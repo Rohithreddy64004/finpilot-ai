@@ -31,10 +31,23 @@ def test_must_mention_terms_are_present_in_committed_domain_text() -> None:
         for domain, path in domain_files.items()
     }
     for case in dataset:
+        unsupported_terms = {term.casefold() for term in case.get("unsupported_terms", [])}
         for term in case.get("must_mention", []):
+            if term.casefold() in unsupported_terms:
+                assert not any(
+                    term.casefold() in source_text[domain]
+                    for domain in case["expected_experts"]
+                ), (case["id"], term, "unsupported term unexpectedly appears in its source set")
+                continue
             assert any(term.casefold() in source_text[domain] for domain in case["expected_experts"]), (
                 case["id"],
                 term,
+            )
+        for term in case.get("scope_evidence", []):
+            assert any(term.casefold() in source_text[domain] for domain in case["expected_experts"]), (
+                case["id"],
+                term,
+                "unsupported term must have explicit source-scope evidence",
             )
 
 

@@ -14,6 +14,10 @@ from typing import Any
 
 import httpx
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from backend.app.config import get_settings
 from backend.app.inference_api import _find_base_model
 from backend.app.nugen.client import NugenClient
@@ -22,7 +26,6 @@ from backend.app.nugen.schemas import ChatCompletionRequest, NugenMessage
 from backend.app.router import route
 
 
-ROOT = Path(__file__).resolve().parents[1]
 DATASET_PATH = ROOT / "eval" / "questions.json"
 RESULTS_PATH = ROOT / "eval"
 
