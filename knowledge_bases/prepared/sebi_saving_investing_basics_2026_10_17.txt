@@ -1,0 +1,36 @@
+FINPILOT AI — SEBI SAVING AND INVESTING BASICS
+Prepared for review on 17 October 2026. This is a plain-language summary of public SEBI Investor education material. It is not an individualized investment recommendation, a return forecast, or a product comparison for a particular person. This prepared file has not been uploaded to Nugen, registered in the source-document store, or activated for inference.
+
+SOURCE AND RETRIEVAL DATE
+The official SEBI Investor pages and the SEBI Financial Education Booklet listed below were retrieved and checked on 17 October 2026. The pages may be revised. Check the current source text before using this summary for a time-sensitive answer.
+
+1. WHAT SAVING MEANS
+SEBI describes savings as the surplus of income over expenditure and as setting aside part of income for future financial requirements. Its Financial Education Booklet explains that people often use savings for short-term goals. It says money held in a bank savings account earns a small amount of interest and is easy to withdraw when needed. The booklet's comparison describes savings in bank accounts as highly liquid and as having low or negligible risk. Those descriptions apply to that comparison of bank-account savings; they do not establish the features, protection, return, or liquidity of every product marketed as a savings product.
+
+The SEBI Investor page titled “Why Save” says savings can support future financial needs and help build an emergency fund for unexpected expenses such as medical emergencies or loss of business. The page does not prescribe a universal emergency-fund amount or a fixed number of months of expenses. FinPilot must not invent such a threshold from this source.
+
+2. WHAT INVESTING MEANS
+The SEBI Financial Education Booklet describes investment as deploying money from savings into financial or non-financial products with the expectation of earning higher returns over time. Examples in the booklet include fixed deposits, shares, mutual funds, land, gold, and silver. Product categories and their terms differ; these examples are not interchangeable and do not have one common risk or withdrawal profile.
+
+SEBI's “Investing: Let's Understand” page says investing is intended to help money grow over time toward financial goals. The SEBI booklet cautions that investment returns may rise or fall over time. SEBI's factors-to-consider page states that investments involve potential risks and do not have guaranteed returns. A hoped-for or historical return is not a promise of future performance.
+
+3. RISK, RETURN, AND LIQUIDITY
+Risk and return depend on the particular asset and its terms. In its savings-versus-investment table, the SEBI booklet describes risk for savings in bank accounts as low or negligible and says investment risk depends on the asset. SEBI's factors-to-consider page says people should consider their ability to withstand fluctuations or loss, and that higher-return investments often come with higher levels of risk. Do not turn these general descriptions into a guarantee that a bank account or any investment cannot lose value or face other risks.
+
+Liquidity is the ease of converting an investment to cash without significantly affecting its market value, according to SEBI's factors-to-consider page. The booklet compares savings-account money as highly liquid with fixed deposits and other financial products as comparatively less liquid. The time and value available on withdrawal can differ by product; check the current terms and any applicable restrictions before making a decision. SEBI's securities-risk page describes liquidity risk as the possibility that an investment cannot be bought or sold promptly.
+
+4. EMERGENCY NEEDS AND FINANCIAL GOALS
+SEBI's “Investing: Let's Understand” page says people should have a stable income source for daily expenses, maintain an emergency fund for unexpected events such as job loss, and consider insurance cover for medical emergencies before investing. SEBI's income-and-expense page separately discusses budgeting, prioritizing basic expenses, setting aside money for an emergency fund, and investing for future goals. These are general education points. The pages do not specify how much any one person should save, which account or product to choose, or how much to invest.
+
+Savings and investing address different financial purposes in the cited SEBI material: savings support liquidity and short-term or urgent needs, while investments seek potential growth or future income and may involve more risk or lower liquidity. A user should consider goals, time horizon, ability to bear loss, liquidity needs, and the actual product terms. FinPilot must not recommend a specific product, amount, allocation, or purchase from this general comparison alone.
+
+5. SOURCE REFERENCES
+SEBI Investor, “Why Save”: https://investor.sebi.gov.in/moneymatters-whysave.html
+SEBI Investor, “Investing: Let's Understand”: https://investor.sebi.gov.in/why_one_should_invest.html
+SEBI Investor, “Factors to Consider Before Investing”: https://investor.sebi.gov.in/investment-thingsbeforeinv.html
+SEBI Investor, “Management of Income and Expenses”: https://investor.sebi.gov.in/moneymatters-inc-exp.html
+SEBI Investor, “Key Risks in Investing in Securities Market”: https://investor.sebi.gov.in/securities-risks_trade_derivatives.html
+SEBI Investor, Financial Education Booklet: https://investor.sebi.gov.in/pdf/downloadable-documents/Financial%20Education%20Booklet%20-%20English.pdf
+
+MAINTENANCE
+Before any upload, confirm that all source pages remain available and that their wording still supports this summary. Record the retrieval date and source URLs with the uploaded document. Uploading creates a separate provider document; it does not replace or activate another document. After upload, check provider status, register the provenance, and include the new ID only through an explicitly reviewed Investment active-source selection. Until those manual steps are completed, the live Investment corpus does not include this prepared file.

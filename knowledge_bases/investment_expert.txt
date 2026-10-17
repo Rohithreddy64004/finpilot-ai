@@ -1,0 +1,108 @@
+FINPILOT AI — INVESTMENT EDUCATION KNOWLEDGE BASE Prepared: 15 October
+2026 Purpose: General investor education, not individualized investment
+advice or a recommendation to buy, sell, or hold a security.
+
+OFFICIAL SOURCES 1. SEBI Investor Education reading material:
+https://investor.sebi.gov.in/iematerial.html 2. SEBI guidance on how to
+invest: https://investor.sebi.gov.in/securities-howtoinvest.html 3. SEBI
+financial education booklet:
+https://investor.sebi.gov.in/pdf/downloadable-documents/Financial%20Education%20Booklet%20-%20English.pdf
+4. SEBI investor education videos:
+https://investor.sebi.gov.in/inv_aware_edu_videos.html
+
+1.  START WITH GOALS AND TIME HORIZON An investment decision should
+    begin with a clear goal, a realistic time horizon, and an
+    understanding of how much loss the investor can financially and
+    emotionally tolerate. Goals may include a short-term planned
+    expense, education, a home purchase, or retirement. Money needed
+    soon generally should not be exposed to large market fluctuations
+    without understanding the risk. A longer time horizon may allow an
+    investor to tolerate some volatility, but it does not eliminate risk
+    or guarantee a positive return. An emergency reserve and management
+    of high-cost debt are important parts of financial planning before
+    taking investment risk.
+
+2.  RISK AND RETURN Investment returns are uncertain. A higher expected
+    return usually comes with higher or different risks; it is not a
+    promise of higher actual performance. Risks may include market-price
+    changes, credit/default risk, interest-rate risk, liquidity risk,
+    inflation risk, concentration risk, and fraud. Past performance does
+    not guarantee future results. Users should understand the product,
+    its costs, how returns are generated, the conditions under which
+    money can be withdrawn, and what could cause a loss. Do not describe
+    any market-linked product as risk-free or guaranteed unless an
+    official product document legally supports that exact claim.
+
+3.  DIVERSIFICATION Diversification means spreading exposure across
+    different investments, issuers, industries, or asset classes rather
+    than relying on one holding. It can reduce the impact of a poor
+    result in one part of a portfolio, but it cannot eliminate all risk.
+    Investments that appear different may still be exposed to the same
+    underlying market factors. A diversified portfolio should be
+    considered in the context of the investor’s goals, time horizon,
+    liquidity needs, and ability to bear loss. FinPilot should explain
+    the concept without prescribing a specific allocation for an
+    individual.
+
+4.  MUTUAL FUNDS A mutual fund pools money from investors and invests it
+    according to the scheme’s stated objective. Schemes may invest
+    mainly in equities, debt securities, a mix of asset classes, or
+    other permitted instruments. Different categories carry different
+    risks. Equity funds are exposed to share-market movements; debt
+    funds can face interest-rate, credit, and liquidity risks; hybrid
+    funds combine exposures; and index funds aim to track a specified
+    index but still experience market losses and tracking differences.
+    Read the scheme information document, key information memorandum,
+    factsheet, and current disclosures before investing. Check the
+    fund’s objective, benchmark, risk level, expenses, portfolio,
+    liquidity conditions, and relevant tax treatment.
+
+5.  SYSTEMATIC INVESTMENT PLANS A Systematic Investment Plan (SIP) is a
+    method of investing a fixed amount at regular intervals in a mutual
+    fund scheme. It can help build a regular investing habit and reduce
+    the pressure to choose a single entry date. However, an SIP does not
+    protect the investor from market losses, guarantee returns, or
+    ensure that the chosen fund is appropriate. Returns depend on the
+    underlying scheme and market conditions. Users should understand the
+    scheme and review official disclosures rather than assuming that
+    regular investing always produces a profit.
+
+6.  EXCHANGE-TRADED FUNDS AND SHARES Exchange-traded funds (ETFs) trade
+    on a stock exchange and may track an index or another basket of
+    assets. Their market price can differ from the value of the
+    underlying holdings, and investors may face brokerage, spread,
+    liquidity, and tracking costs. Individual shares represent exposure
+    to a particular company and can be volatile. Before investing,
+    understand how orders work, the role of a registered intermediary,
+    account and KYC requirements, transaction costs, and the risks
+    associated with the chosen security. Avoid borrowing to invest
+    unless the risks are fully understood.
+
+7.  FRAUD PREVENTION Be cautious of unsolicited stock tips,
+    guaranteed-return claims, pressure to act immediately, requests to
+    transfer money to personal accounts, fake trading apps,
+    impersonation of regulated entities, and influencers who conceal
+    conflicts of interest. Verify intermediaries and information through
+    official SEBI and exchange resources. Do not share passwords, OTPs,
+    or remote access to a device. Keep contract notes and account
+    statements, and use official complaint channels if something appears
+    wrong. A legitimate-looking website or social-media profile is not
+    proof of authorization.
+
+8.  HOW FINPILOT SHOULD ANSWER INVESTMENT QUESTIONS Explain concepts,
+    risks, and how to research a product. Ask about the goal and time
+    horizon only when needed to clarify the question; do not turn a
+    general educational answer into a personalized recommendation. Never
+    guarantee returns or claim that an asset will rise. Cite official
+    SEBI or exchange resources and identify the date checked for
+    information that can change. If asked to recommend a specific
+    security or allocation, explain the limits of the information and
+    suggest consulting a properly registered investment adviser for
+    personalized advice. The user should make decisions based on their
+    own circumstances and the official documents.
+
+DOCUMENT MAINTENANCE Use current SEBI Investor Education material and
+applicable official disclosures. Review links periodically, and label
+outdated content rather than silently relying on it. Third-party content
+may be used as a lead for research but should not override official
+primary sources.

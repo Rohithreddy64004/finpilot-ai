@@ -1,0 +1,35 @@
+FINPILOT AI — INDIAN TAX REGIME COMPARISON SOURCE PREPARATION
+Prepared on 15 October 2026 for manual review and upload. This document is a general educational extract of Income Tax Department guidance. It is not an official tax computation, legal interpretation, or personal recommendation. The source page is a living page and can be revised after this retrieval date.
+
+OFFICIAL SOURCE
+Income Tax Department, Government of India, “Returns and Forms Applicable for Salaried Individuals for AY 2026-27,” including its “Tax Slabs for AY 2026-27” section.
+Source URL: https://www.incometax.gov.in/iec/foportal/help/individual/return-applicable-1
+Retrieved and checked: 15 October 2026.
+
+1. SCOPE AND ASSESSMENT YEAR
+
+This comparison transcribes the ordinary income-tax slab tables shown by the Income Tax Department for individual taxpayers who were below 60 years of age at any time during the previous year, for Assessment Year 2026-27. It compares the old regime with the new regime under section 115BAC of the Income-tax Act, 1961. The table is not a tax calculation. It does not cover every taxpayer type, every age category, every income category, or every special-rate rule. In particular, the Department shows different old-regime basic exemption slabs for individuals aged 60 or more. Do not apply the below-60 old-regime table to a senior citizen.
+
+2. OLD REGIME SLABS FOR AN INDIVIDUAL BELOW AGE 60
+
+For AY 2026-27, the official table states: total income up to ₹2,50,000 is taxed at nil; from ₹2,50,001 to ₹5,00,000, the rate is 5% of the amount above ₹2,50,000; from ₹5,00,001 to ₹10,00,000, tax is ₹12,500 plus 20% of the amount above ₹5,00,000; and above ₹10,00,000, tax is ₹1,12,500 plus 30% of the amount above ₹10,00,000. These are progressive slab computations. The percentage in one slab is applied to the portion falling in that slab, not to all income from the first rupee.
+
+3. NEW REGIME SLABS FOR AN INDIVIDUAL BELOW AGE 60
+
+For AY 2026-27, the official table under section 115BAC states: total income up to ₹4,00,000 is taxed at nil; from ₹4,00,001 to ₹8,00,000, the rate is 5% of the amount above ₹4,00,000; from ₹8,00,001 to ₹12,00,000, tax is ₹20,000 plus 10% of the amount above ₹8,00,000; from ₹12,00,001 to ₹16,00,000, tax is ₹60,000 plus 15% of the amount above ₹12,00,000; from ₹16,00,001 to ₹20,00,000, tax is ₹1,20,000 plus 20% of the amount above ₹16,00,000; from ₹20,00,001 to ₹24,00,000, tax is ₹2,00,000 plus 25% of the amount above ₹20,00,000; and above ₹24,00,000, tax is ₹3,00,000 plus 30% of the amount above ₹24,00,000. These too are progressive slab computations, not flat rates on total income.
+
+4. HOW THE REGIMES DIFFER
+
+The Department describes the new regime as the default for eligible individuals and certain other listed taxpayer types, while eligible taxpayers can opt out and choose the old regime. The old regime permits various deductions and exemptions. The default new regime has lower slab rates in the displayed table but permits fewer deductions, subject to specified exceptions. A person cannot decide which regime is better by comparing headline rates alone. The result depends on taxable income after applicable adjustments, deductions and exemptions, taxpayer age and residence, income sources, eligibility to choose, and any applicable special-rate provisions.
+
+5. REBATE INFORMATION ON THE SAME DEPARTMENT PAGE
+
+The page states that a resident individual may qualify for a section 87A rebate of up to 100% of income tax, subject to a maximum of ₹60,000 under the new regime where taxable income does not exceed ₹12,00,000, or ₹12,500 under the old regime where taxable income does not exceed ₹5,00,000. These are conditional rebate limits, not general slab rates and not a promise that every person with income below a threshold owes no tax. The taxpayer must be eligible, the relevant income must be computed under the applicable rules, and special-rate income and other statutory conditions can affect the result. The official page also describes surcharge and marginal relief for high incomes and a 4% health and education cess on income tax plus surcharge, if any.
+
+6. INFORMATION NEEDED FOR A FAIR COMPARISON
+
+Before attempting even an educational estimate, establish the assessment year; age during the relevant previous year; residential status; whether income includes salary, business or professional income, capital gains, house-property income, or special-rate income; the eligible deductions and exemptions; the taxpayer’s ability to choose or change regimes; and possible rebate, surcharge, marginal-relief, and cess effects. For eligible taxpayers with business or professional income, the official page describes additional Form 10-IEA and timing requirements for opting out and returning to the default regime. Do not infer that a deduction is available in both regimes or that a prior year’s choice automatically applies in a later year.
+
+7. SAFE ANSWERING AND MAINTENANCE
+
+If asked for a regime comparison, FinPilot should state that this table covers only AY 2026-27 and the under-60 individual slab table. It may explain the structural difference and quote the relevant official slabs, but it should not declare one regime best without verified taxpayer facts and a full computation. It should not convert gross salary directly into taxable income, promise rebate eligibility, omit surcharge or cess when material, or apply these values to another AY. When asked about a different year, age group, entity, special-rate income, or current-year rule, retrieve the corresponding official Income Tax Department material instead. Recheck the official page before reuse because the portal can change. If a current official source is unavailable or the taxpayer’s circumstances are incomplete, say that the answer is unverified and direct the user to the Department’s current material or a qualified tax professional.
