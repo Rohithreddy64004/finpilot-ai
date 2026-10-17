@@ -54,7 +54,7 @@ AlignedDeploymentStatus = Literal["UNDEPLOYED", "DEPLOYING", "DEPLOYED", "UNDEPL
 class ChatRequest(BaseModel):
     """A user's finance education question."""
 
-    question: str = Field(min_length=1, max_length=10_000)
+    question: str = Field(min_length=1, max_length=2_000)
     applicable_as_of: date | None = None
 
     @field_validator("question")
@@ -121,7 +121,7 @@ class DomainInferenceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     domain: ExpertName
-    question: str = Field(min_length=1, max_length=10_000)
+    question: str = Field(min_length=1, max_length=2_000)
     model_id: str | None = Field(default=None, min_length=1, max_length=300)
     applicable_as_of: date | None = None
 
@@ -194,6 +194,208 @@ class DomainInferenceResponse(BaseModel):
     educational_disclaimer: str = (
         "FinPilot AI provides general financial education, not licensed advice."
     )
+
+
+class AskRequest(BaseModel):
+    """A multi-expert educational question with an optional expert override."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=2_000)
+    experts: list[ExpertName] | None = Field(default=None, min_length=1, max_length=3)
+    applicable_date: date | None = None
+
+    @field_validator("question")
+    @classmethod
+    def ask_question_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("question must not be blank")
+        return value
+
+    @field_validator("experts")
+    @classmethod
+    def ask_experts_must_be_unique(
+        cls,
+        value: list[ExpertName] | None,
+    ) -> list[ExpertName] | None:
+        if value is not None and len(set(value)) != len(value):
+            raise ValueError("experts must not contain duplicates")
+        return value
+
+
+class AskRoutingDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    experts: list[ExpertName] = Field(max_length=3)
+    reason: str = Field(min_length=1, max_length=500)
+    routing_method: Literal["model", "fallback", "override"]
+
+
+class AskSource(BaseModel):
+    """Globally unique citation identity for one passage in a multi-expert answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expert: ExpertName
+    citation_id: str = Field(pattern=r"^S[1-9][0-9]*$")
+    passage_id: str = Field(min_length=1)
+    document_id: str = Field(min_length=1)
+    document_name: str = Field(min_length=1)
+    excerpt: str = Field(min_length=1)
+    source: SourceReference
+
+
+class AskExpertResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expert: ExpertName
+    status: Literal["complete", "error"]
+    answer: str = Field(min_length=1)
+    alignment_status: AlignmentStatus = "unaligned"
+    source_grounding_supported: bool = False
+    source_grounding_note: str = "No supporting passage was found."
+    evidence: list[AskSource] = Field(default_factory=list)
+    claim_verifications: list[ClaimVerification] = Field(default_factory=list)
+    claim_verification_status: ClaimVerificationSummaryStatus = "not_performed"
+    independent_verification_performed: bool = False
+    claim_verification_note: str = "No claim verification has been performed."
+    limitations: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class AskStageLatency(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    routing_ms: int = Field(ge=0)
+    experts_ms: int = Field(ge=0)
+    per_expert_ms: dict[ExpertName, int] = Field(default_factory=dict)
+    synthesis_ms: int = Field(ge=0)
+    total_ms: int = Field(ge=0)
+
+
+class AskResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str = Field(min_length=1)
+    question: str
+    routing: AskRoutingDecision
+    experts: list[AskExpertResult]
+    final_answer: str = Field(min_length=1)
+    final_answer_source_grounding_supported: bool = False
+    final_answer_source_grounding_note: str = "No source-grounded final answer was returned."
+    final_answer_claim_verifications: list[ClaimVerification] = Field(default_factory=list)
+    final_answer_claim_verification_status: ClaimVerificationSummaryStatus = "not_performed"
+    final_answer_independent_verification_performed: bool = False
+    final_answer_claim_verification_note: str = "No final claim verification has been performed."
+    sources: list[AskSource] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    latency_ms: AskStageLatency
+
+
+class QueryLogRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=2_000)
+    routing: AskRoutingDecision
+    timestamp: datetime
+
+
+class FeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query_id: str = Field(min_length=1, max_length=100)
+    rating: Literal["up", "down"]
+    comment: str | None = Field(default=None, max_length=2_000)
+    correct_experts: list[ExpertName] | None = Field(default=None, max_length=3)
+
+    @field_validator("query_id")
+    @classmethod
+    def feedback_query_id_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("query_id must not be blank")
+        return value
+
+    @field_validator("comment")
+    @classmethod
+    def feedback_comment_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @field_validator("correct_experts")
+    @classmethod
+    def corrected_experts_must_be_unique(
+        cls,
+        value: list[ExpertName] | None,
+    ) -> list[ExpertName] | None:
+        if value is not None and len(set(value)) != len(value):
+            raise ValueError("correct_experts must not contain duplicates")
+        return value
+
+
+class FeedbackRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    query_id: str = Field(min_length=1)
+    rating: Literal["up", "down"]
+    comment: str | None = None
+    correct_experts: list[ExpertName] | None = None
+    timestamp: datetime
+
+
+class FeedbackCreatedResponse(BaseModel):
+    id: str
+    query_id: str
+    notice: str = (
+        "Feedback is stored separately and is not treated as a verified correction."
+    )
+
+
+class FeedbackSummaryResponse(BaseModel):
+    total: int = Field(ge=0)
+    thumbs_up: int = Field(ge=0)
+    thumbs_down: int = Field(ge=0)
+    correct_expert_counts: dict[ExpertName, int] = Field(default_factory=dict)
+    verified_correction_count: int = Field(ge=0)
+
+
+class VerifiedCorrectionRequest(BaseModel):
+    """Reviewer-attested correction; never populated from ordinary feedback."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query_id: str = Field(min_length=1, max_length=100)
+    correction: str = Field(min_length=1, max_length=4_000)
+    verified_by: str = Field(min_length=2, max_length=200)
+    verification_note: str = Field(min_length=10, max_length=2_000)
+    source_references: list[SourceReference] = Field(min_length=1, max_length=10)
+
+    @field_validator("source_references")
+    @classmethod
+    def correction_sources_must_be_https(
+        cls,
+        value: list[SourceReference],
+    ) -> list[SourceReference]:
+        if any(source.url is None or source.url.scheme != "https" for source in value):
+            raise ValueError("verified corrections require HTTPS source references")
+        return value
+
+
+class VerifiedCorrectionRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    query_id: str = Field(min_length=1)
+    correction: str = Field(min_length=1, max_length=4_000)
+    verified_by: str = Field(min_length=2, max_length=200)
+    verification_note: str = Field(min_length=10, max_length=2_000)
+    source_references: list[SourceReference] = Field(min_length=1, max_length=10)
+    verified_at: datetime
 
 
 class HealthResponse(BaseModel):
