@@ -193,6 +193,9 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 .error-panel { display: flex; align-items: flex-start; gap: 8px; padding: 12px; border: 1px solid rgba(235,121,121,.24); border-radius: 3px 10px 10px; color: #efb0b0; background: rgba(117,44,49,.14); font-size: 10px; line-height: 1.55; }
 .error-panel svg { flex: 0 0 auto; color: #e99595; }
+.source-health-banner { margin: 0 0 12px; padding: 12px 14px; border: 1px solid rgba(205,139,65,.35); border-radius: 9px; color: #f2d9ad; background: rgba(117,78,31,.16); font-size: 12px; line-height: 1.55; }
+.source-health-banner strong { color: #ffe2a8; }
+.expert-model-id { max-width: 220px; overflow: hidden; color: #6f8097; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .composer-area { position: sticky; bottom: 0; z-index: 2; padding: 13px 0 6px; background: linear-gradient(180deg, rgba(8,17,29,0), rgba(8,17,29,.96) 17%, rgba(8,17,29,.99)); }
 .composer { max-width: 850px; margin: 0 auto; padding: 9px 10px 8px 14px; border: 1px solid rgba(123,148,171,.24); border-radius: 12px; background: #101d2e; box-shadow: 0 12px 35px rgba(0,0,0,.19), inset 0 1px rgba(255,255,255,.025); transition: border-color .17s ease, box-shadow .17s ease; }
 .composer:focus-within { border-color: rgba(94,234,212,.42); box-shadow: 0 12px 35px rgba(0,0,0,.22), 0 0 0 3px rgba(94,234,212,.045); }
@@ -389,6 +392,9 @@
 .pending-answer svg { color: #2865bd; }
 .error-panel { border-color: #efcaca; color: #8f3434; background: #fff4f4; font-size: 13px; }
 .error-panel svg { color: #aa4242; }
+.source-health-banner { border-color: #ead4a7; color: #75561c; background: #fff8e9; font-size: 13px; }
+.source-health-banner strong { color: #614510; }
+.expert-model-id { color: #52657f; }
 .composer-area { background: linear-gradient(180deg, rgba(244,247,252,0), rgba(244,247,252,.96) 17%, rgba(244,247,252,.99)); }
 .composer { border-color: #cfdbea; background: #ffffff; box-shadow: 0 10px 28px rgba(39,66,104,.09); }
 .composer:focus-within { border-color: #83a8dc; box-shadow: 0 8px 24px rgba(39,66,104,.1), 0 0 0 3px rgba(43,101,188,.11); }

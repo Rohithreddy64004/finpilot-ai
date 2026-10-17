@@ -16,7 +16,7 @@ from backend.app.nugen.schemas import AlignedModelSummary
 from backend.app.schemas import AlignmentJobRecord
 
 
-ALIGNMENT_COMPLETED_STATES = {"READY", "EVALUATED", "UNDEPLOYED"}
+ALIGNMENT_COMPLETED_STATES = {"READY"}
 
 
 async def _models_for_alignment(

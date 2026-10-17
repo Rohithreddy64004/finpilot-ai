@@ -1,10 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Menu, Plus, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { ChatInput } from './components/ChatInput'
 import { ChatMessage } from './components/ChatMessage'
 import { Sidebar } from './components/Sidebar'
-import { ApiError, requestAsk, requestFeedback } from './services/api'
-import type { Domain } from './types/api'
+import { ApiError, requestAsk, requestFeedback, requestSourceHealth } from './services/api'
+import type { Domain, SourceHealthResponse } from './types/api'
 import type { ChatEntry, Conversation } from './types/chat'
 import './App.css'
 
@@ -35,7 +35,22 @@ function App() {
   const [draft, setDraft] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [sourceHealth, setSourceHealth] = useState<SourceHealthResponse | null>(null)
+  const [sourceHealthError, setSourceHealthError] = useState<string | null>(null)
   const submissionLock = useRef(false)
+
+  useEffect(() => {
+    let active = true
+    void requestSourceHealth().then((health) => {
+      if (active) setSourceHealth(health)
+    }).catch((error: unknown) => {
+      if (!active) return
+      setSourceHealthError(error instanceof ApiError
+        ? error.message
+        : 'The active source status could not be checked. Retry after the backend is available.')
+    })
+    return () => { active = false }
+  }, [])
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId),
@@ -213,6 +228,17 @@ function App() {
               </div>
               <div className="model-note"><span className="model-note-icon"><Sparkles size={16} /></span><span><strong>AI-assisted learning</strong><small>Every answer shows its limits</small></span></div>
             </div>
+
+            {sourceHealthError && (
+              <aside className="source-health-banner" role="status">
+                <strong>Active source status unavailable.</strong> {sourceHealthError}
+              </aside>
+            )}
+            {sourceHealth?.domains.filter((item) => item.status !== 'ready').map((item) => (
+              <aside className="source-health-banner" role="status" key={item.domain}>
+                <strong>{item.domain === 'tax' ? 'Tax' : item.domain === 'investment' ? 'Investment' : 'Insurance'} source needs attention.</strong> {item.message}
+              </aside>
+            ))}
 
             <section className="expert-override-panel" aria-label="Expert routing options">
               <fieldset className="expert-override" disabled={isSubmitting}>

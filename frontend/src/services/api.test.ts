@@ -6,6 +6,7 @@ import {
   requestAsk,
   requestFeedback,
   requestInference,
+  requestSourceHealth,
 } from './api'
 import type { AskResponse, Domain, InferenceResponse } from '../types/api'
 
@@ -67,6 +68,7 @@ function askResponseFixture(): AskResponse {
       expert: 'tax',
       status: 'complete',
       answer: 'Taxable income is assessed under the applicable regime. [S1]',
+      model_id: 'fixture-base-model',
       alignment_status: 'unaligned',
       source_grounding_supported: true,
       source_grounding_note: 'The citation maps to a retrieved passage.',
@@ -204,6 +206,60 @@ describe('multi-expert API', () => {
     })
     expect(response.routing.experts).toEqual(['tax'])
     expect(response.sources[0].citation_id).toBe('S1')
+    expect(response.experts[0].model_id).toBe('fixture-base-model')
+  })
+
+  it('shows no model identity for an expert result that used no model', () => {
+    const fixture = askResponseFixture()
+    fixture.experts[0].status = 'error'
+    fixture.experts[0].model_id = null
+    fixture.experts[0].error = 'No model was selected.'
+
+    expect(parseAskResponse(fixture).experts[0].model_id).toBeNull()
+  })
+
+  it('keeps rate-limit, service, upstream-timeout, network, and local-timeout messages distinct', async () => {
+    const cases = [
+      [429, 'FinPilot is rate limited (HTTP 429). Wait briefly before sending another question.'],
+      [503, 'FinPilot service is not ready (HTTP 503). Check the active source set and server configuration.'],
+      [504, 'The FinPilot or Nugen request timed out (HTTP 504). Please try again.'],
+    ] as const
+    for (const [status, message] of cases) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockedResponse({ detail: 'safe' }, status)))
+      await expect(requestAsk({ question: 'Explain a tax slab.' })).rejects.toMatchObject({ message, status })
+    }
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network failure')))
+    await expect(requestAsk({ question: 'Explain a tax slab.' })).rejects.toThrow(
+      'Cannot reach FinPilot through the same-origin API path.',
+    )
+
+    vi.useFakeTimers()
+    const fetchMock = vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const pending = requestAsk({ question: 'Explain a tax slab.' })
+    const assertion = expect(pending).rejects.toThrow('The request timed out. Please try again.')
+    await vi.advanceTimersByTimeAsync(180_000)
+    await assertion
+    vi.useRealTimers()
+  })
+
+  it('loads active source quality states for the router-first source banner', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockedResponse({
+      domains: [
+        { domain: 'tax', active_document_ids: [], status: 'missing', message: 'Register a source.', issues: [] },
+        { domain: 'investment', active_document_ids: ['old'], status: 'invalid', message: 'Review the source.', issues: ['bad heading'] },
+        { domain: 'insurance', active_document_ids: ['ready'], status: 'ready', message: 'Ready.', issues: [] },
+      ],
+    })))
+
+    const response = await requestSourceHealth()
+
+    expect(response.domains.map((item) => item.status)).toEqual(['missing', 'invalid', 'ready'])
   })
 
   it('rejects a grounded answer whose citation is absent from returned sources', () => {

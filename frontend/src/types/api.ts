@@ -67,6 +67,18 @@ export interface AskRequest {
   experts?: Domain[]
 }
 
+export interface SourceDomainHealth {
+  domain: Domain
+  active_document_ids: string[]
+  status: 'ready' | 'missing' | 'invalid'
+  message: string
+  issues: string[]
+}
+
+export interface SourceHealthResponse {
+  domains: SourceDomainHealth[]
+}
+
 export interface AskSource extends RetrievedEvidence {
   expert: Domain
 }
@@ -75,6 +87,7 @@ export interface AskExpertResult {
   expert: Domain
   status: 'complete' | 'error'
   answer: string
+  model_id: string | null
   alignment_status: 'aligned' | 'unaligned'
   source_grounding_supported: boolean
   source_grounding_note: string

@@ -20,6 +20,12 @@ import httpx
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from backend.app.corpus_quality import inspect_corpus_text
+
+
 CORPUS_FILES = {
     "tax": "tax_expert.txt",
     "investment": "investment_expert.txt",
@@ -111,6 +117,12 @@ def load_corpus_sources(
             raise ValueError(f"{path.name} is missing or is not valid UTF-8 text") from None
 
         _validate_section_provenance(text, selected_domain, path.name)
+
+        _, quality_issues = inspect_corpus_text(path.name, text, domain=selected_domain)
+        if quality_issues:
+            raise ValueError(
+                f"{path.name} failed corpus quality checks: " + "; ".join(quality_issues)
+            )
 
         source_url = None
         retrieved_on = None

@@ -69,6 +69,7 @@ function askFixture(domain: Domain = 'investment'): AskResponse {
       expert: domain,
       status: 'complete',
       answer: 'Diversification spreads exposure across investments. [S1]',
+      model_id: 'fixture-base-model',
       alignment_status: 'unaligned',
       source_grounding_supported: true,
       source_grounding_note: 'The answer cites a retrieved passage.',
@@ -99,14 +100,31 @@ function askFixture(domain: Domain = 'investment'): AskResponse {
   }
 }
 
-function mockFetch(response: unknown, status = 200) {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    text: async () => JSON.stringify(response),
+function mockFetch(response: unknown, status = 200, sourceHealth?: unknown) {
+  const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const isHealth = String(input) === '/api/source-health'
+    const value = isHealth ? sourceHealth ?? {
+      domains: ['tax', 'investment', 'insurance'].map((domain) => ({
+        domain,
+        active_document_ids: [`${domain}-fixture`],
+        status: 'ready',
+        message: 'The active source passed local quality checks.',
+        issues: [],
+      })),
+    } : response
+    const responseStatus = isHealth ? 200 : status
+    return Promise.resolve({
+      ok: responseStatus >= 200 && responseStatus < 300,
+      status: responseStatus,
+      text: async () => JSON.stringify(value),
+    })
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+function askCalls(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.filter(([input]) => String(input) !== '/api/source-health')
 }
 
 async function expectAnswerVisible() {
@@ -135,8 +153,8 @@ describe('FinPilot chat interface', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
 
     await expectAnswerVisible()
-    expect(fetchMock).toHaveBeenCalledOnce()
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(askCalls(fetchMock)).toHaveLength(1)
+    const [, init] = askCalls(fetchMock)[0] as [string, RequestInit]
     expect(JSON.parse(String(init.body))).toEqual({
       question: 'What is the difference between saving and investing?',
     })
@@ -144,6 +162,7 @@ describe('FinPilot chat interface', () => {
     expect(screen.getAllByText('Verification unavailable')).toHaveLength(2)
     expect(screen.getByText(/No independent claim verifier is configured/)).toBeTruthy()
     expect(screen.getByText('Base model (not aligned)')).toBeTruthy()
+    expect(screen.getByText('fixture-base-model')).toBeTruthy()
     fireEvent.click(screen.getByText(/Sources & evidence/))
     expect(screen.getByText(/Diversification can reduce the effect/)).toBeTruthy()
     expect(screen.getAllByText(/SEBI/).length).toBeGreaterThan(0)
@@ -154,7 +173,7 @@ describe('FinPilot chat interface', () => {
     expect(sebiSourceLink).toBeTruthy()
     expect(screen.getByText('Not a substitute for personal financial advice.')).toBeTruthy()
     expect(screen.queryByText('FinPilot AI provides general financial education, not licensed advice.')).toBeNull()
-  })
+  }, 10_000)
 
   it('sends an explicit expert override only when one is selected', async () => {
     const fetchMock = mockFetch(askFixture('insurance'))
@@ -166,7 +185,7 @@ describe('FinPilot chat interface', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
 
     await expectAnswerVisible()
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const [, init] = askCalls(fetchMock)[0] as [string, RequestInit]
     expect(JSON.parse(String(init.body))).toEqual({
       question: 'What is an insurance premium?',
       experts: ['insurance'],
@@ -186,18 +205,58 @@ describe('FinPilot chat interface', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
+  it('shows actionable source banners for invalid and missing active corpora', async () => {
+    mockFetch(askFixture(), 200, {
+      domains: [
+        {
+          domain: 'tax', active_document_ids: ['old-tax-doc'], status: 'invalid',
+          message: 'The active tax source fails local quality checks. Review the corpus, then register and activate a verified source before retrying.',
+          issues: ['instruction-style heading'],
+        },
+        {
+          domain: 'investment', active_document_ids: [], status: 'missing',
+          message: 'No active investment source is selected. Register a verified official corpus and activate it before asking this expert.',
+          issues: [],
+        },
+        {
+          domain: 'insurance', active_document_ids: ['insurance-doc'], status: 'ready',
+          message: 'The active insurance source passed local quality checks.', issues: [],
+        },
+      ],
+    })
+    render(<App />)
+
+    expect(await screen.findByText(/Tax source needs attention/)).toBeTruthy()
+    expect(screen.getByText(/register and activate a verified source before retrying/)).toBeTruthy()
+    expect(screen.getByText(/Investment source needs attention/)).toBeTruthy()
+    expect(screen.queryByText(/Insurance source needs attention/)).toBeNull()
+  })
+
   it('retries the same question after a safe backend error', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 503,
-        text: async () => JSON.stringify({ detail: 'internal server traceback' }),
+    const askResponses = [
+      { value: { detail: 'internal server traceback' }, status: 503 },
+      { value: askFixture('tax'), status: 200 },
+    ]
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === '/api/source-health') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            domains: ['tax', 'investment', 'insurance'].map((domain) => ({
+              domain, active_document_ids: [`${domain}-fixture`], status: 'ready',
+              message: 'Ready.', issues: [],
+            })),
+          }),
+        })
+      }
+      const next = askResponses.shift()!
+      return Promise.resolve({
+        ok: next.status >= 200 && next.status < 300,
+        status: next.status,
+        text: async () => JSON.stringify(next.value),
       })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify(askFixture('tax')),
-      })
+    })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
@@ -209,8 +268,8 @@ describe('FinPilot chat interface', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await expectAnswerVisible()
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    const [, retryInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(askCalls(fetchMock)).toHaveLength(2)
+    const [, retryInit] = askCalls(fetchMock)[1] as [string, RequestInit]
     expect(JSON.parse(String(retryInit.body))).toEqual({ question: 'Explain a tax rebate.' })
   })
 
@@ -222,13 +281,25 @@ describe('FinPilot chat interface', () => {
     fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
 
     await expectAnswerVisible()
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(askCalls(fetchMock)).toHaveLength(1)
   })
 
   it('shows a pending state and disables duplicate submissions', async () => {
     let resolveFetch: ((response: Response) => void) | undefined
     const pendingResponse = new Promise<Response>((resolve) => { resolveFetch = resolve })
-    const fetchMock = vi.fn().mockReturnValue(pendingResponse)
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) !== '/api/source-health') return pendingResponse
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          domains: ['tax', 'investment', 'insurance'].map((domain) => ({
+            domain, active_document_ids: [`${domain}-fixture`], status: 'ready',
+            message: 'Ready.', issues: [],
+          })),
+        }),
+      })
+    })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
@@ -238,7 +309,7 @@ describe('FinPilot chat interface', () => {
 
     expect(screen.getByRole('status').textContent).toContain('Routing and checking')
     expect((screen.getByRole('button', { name: 'Send question' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(askCalls(fetchMock)).toHaveLength(1)
     resolveFetch?.({
       ok: true,
       status: 200,

@@ -252,6 +252,7 @@ class AskExpertResult(BaseModel):
     expert: ExpertName
     status: Literal["complete", "error"]
     answer: str = Field(min_length=1)
+    model_id: str | None = None
     alignment_status: AlignmentStatus = "unaligned"
     source_grounding_supported: bool = False
     source_grounding_note: str = "No supporting passage was found."
@@ -485,6 +486,22 @@ class ActiveSourceSelection(BaseModel):
         if any(not item for item in cleaned) or len(set(cleaned)) != len(cleaned):
             raise ValueError("active source document IDs must be unique and nonblank")
         return cleaned
+
+
+class SourceDomainHealth(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    domain: ExpertName
+    active_document_ids: list[str] = Field(default_factory=list)
+    status: Literal["ready", "missing", "invalid"]
+    message: str = Field(min_length=1)
+    issues: list[str] = Field(default_factory=list)
+
+
+class SourceHealthResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    domains: list[SourceDomainHealth] = Field(min_length=3, max_length=3)
 
 
 class DocumentStatusCheckResponse(BaseModel):

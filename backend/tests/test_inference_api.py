@@ -926,6 +926,121 @@ async def test_deployed_aligned_model_without_domain_job_record_is_rejected() ->
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("domain", ["tax", "investment", "insurance"])
+async def test_configured_domain_model_id_alone_is_not_labeled_aligned(domain: ExpertName) -> None:
+    configured_model_id = f"configured-{domain}-model"
+    nugen = FakeNugenClient()
+    nugen.base_model_rows = [
+        BaseModelSummary(
+            model_id=configured_model_id,
+            model_name=f"Configured {domain} fixture model",
+            type="text-generation",
+            inference_ready=True,
+        )
+    ]
+    model_setting = {
+        "tax": "nugen_tax_model_id",
+        "investment": "nugen_investment_model_id",
+        "insurance": "nugen_insurance_model_id",
+    }[domain]
+    repository = MemoryDocumentRepository([source_record(domain, f"{domain}-source")])
+    setup_dependencies(
+        client=nugen,
+        repository=repository,
+        settings=Settings(
+            _env_file=None,
+            nugen_api_key="fixture-secret",
+            nugen_test_model_id="fixture-base-model",
+            **{model_setting: configured_model_id},
+        ),
+    )
+
+    async with await make_client() as client:
+        response = await client.post(
+            "/api/inference",
+            json={
+                "domain": domain,
+                "question": {
+                    "tax": "What does the source say about income tax slabs?",
+                    "investment": "What is saving?",
+                    "insurance": "What does a health insurance waiting period mean?",
+                }[domain],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["model_id"] == configured_model_id
+    assert response.json()["alignment_status"] == "unaligned"
+    assert nugen.completion_calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_status", ["EVALUATED", "UNDEPLOYED"])
+async def test_aligned_badge_requires_a_ready_job_and_deployed_matching_model(
+    provider_status: str,
+) -> None:
+    nugen = FakeNugenClient()
+    nugen.base_model_rows = []
+    nugen.aligned_model_rows = [
+        AlignedModelSummary(
+            model_id="fixture-aligned-tax",
+            model_name="Fixture aligned tax model",
+            deployment_status="DEPLOYED",
+            base_model_id="fixture-base-model",
+            alignment_id="fixture-alignment",
+            created_at="2026-10-15T00:00:00Z",
+        )
+    ]
+    nugen.alignment_statuses["fixture-alignment"] = AlignmentStatusResponse(
+        alignment_id="fixture-alignment",
+        status=provider_status,
+    )
+    nugen.deployment_statuses["fixture-aligned-tax"] = DeploymentStatusResponse(
+        model_id="fixture-aligned-tax",
+        status="DEPLOYED",
+    )
+    stale_record = AlignmentJobRecord(
+        tracking_id="fixture-tracking",
+        domain="tax",
+        alignment_name="Fixture tax model",
+        base_model_id="fixture-base-model",
+        document_ids=["tax-source"],
+        alignment_id="fixture-alignment",
+        submission_state="SUBMITTED",
+        provider_status="READY",
+        model_id="fixture-aligned-tax",
+        listed_deployment_status="DEPLOYED",
+        deployment_status="DEPLOYED",
+        alignment_status="aligned",
+        verification_state="VERIFIED",
+        inference_ready=True,
+        status_note="Stale previously verified state.",
+        created_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
+    )
+    setup_dependencies(
+        client=nugen,
+        repository=MemoryDocumentRepository([source_record("tax", "tax-source")]),
+        settings=Settings(
+            _env_file=None,
+            nugen_api_key="fixture-secret",
+            nugen_tax_model_id="fixture-aligned-tax",
+        ),
+        alignment_repository=MemoryAlignmentJobRepository([stale_record]),
+    )
+
+    async with await make_client() as client:
+        response = await client.post(
+            "/api/inference",
+            json={"domain": "tax", "question": "What does this source explain?"},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"].find("not confirmed") >= 0
+    assert nugen.completion_calls == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("answer", "assessment", "expected_status", "expect_withheld"),
     [

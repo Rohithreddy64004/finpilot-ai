@@ -333,6 +333,27 @@ def official_record(
     )
 
 
+def valid_corpus_text(domain: ExpertName, *, words: int = 1_600) -> bytes:
+    sources = {
+        "tax": ("https://www.incometax.gov.in/iec/foportal/", "Income Tax Department"),
+        "investment": ("https://investor.sebi.gov.in/", "SEBI"),
+        "insurance": ("https://irdai.gov.in/policyholders", "IRDAI"),
+    }
+    source_url, publisher = sources[domain]
+    text = (
+        f"# {domain.title()} source\n"
+        f"Source: {source_url}\n"
+        "Accessed: 2026-10-17\n\n"
+        f"1. {domain.upper()} SOURCE SUMMARY\n"
+        f"Source: {source_url}\n"
+        "Accessed: 2026-10-17\n"
+        f"Source title: Official {domain} education\n"
+        f"Publisher: {publisher}\n"
+        + (f"General {domain} education information. " * words)
+    )
+    return text.encode("utf-8")
+
+
 @pytest.mark.parametrize(
     ("domain", "source_url"),
     [
@@ -572,8 +593,8 @@ async def test_domain_active_source_cutover_and_rollback_preserve_both_documents
         else f"fixture-old-{domain}-document"
     )
     new_id = f"fixture-new-{domain}-document"
-    old_bytes = f"Original {domain} source retained for rollback. ".encode() * 40
-    new_bytes = f"Reviewed {domain} source selected for its expert. ".encode() * 40
+    old_bytes = valid_corpus_text(domain, words=1_600)
+    new_bytes = valid_corpus_text(domain, words=1_700)
     source_urls = {
         "tax": "https://www.incometax.gov.in/iec/foportal/",
         "investment": "https://investor.sebi.gov.in/",
@@ -653,6 +674,107 @@ async def test_domain_active_source_cutover_and_rollback_preserve_both_documents
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["instruction heading", "missing header", "under 500 words"])
+async def test_active_source_rejects_corpus_quality_failures_without_switching(failure: str) -> None:
+    service = FakeAlignmentService()
+    repository = MemoryDocumentRepository()
+    content_store = override_dependencies(service, repository)
+    old_id = "valid-tax-document"
+    bad_id = f"bad-tax-document-{failure.replace(' ', '-')}"
+    old_bytes = valid_corpus_text("tax", words=1_600)
+    if failure == "instruction heading":
+        bad_bytes = valid_corpus_text("tax", words=1_600).replace(
+            b"1. TAX SOURCE SUMMARY",
+            b"1. HOW FINPILOT SHOULD ANSWER TAX QUESTIONS",
+        )
+    elif failure == "missing header":
+        bad_bytes = ("Tax education. " * 600).encode("utf-8")
+    else:
+        bad_bytes = (
+            "Source: https://www.incometax.gov.in/\n"
+            "Accessed: 2026-10-17\n"
+            + "tax education " * 240
+        ).encode("utf-8")
+
+    for document_id, content in ((old_id, old_bytes), (bad_id, bad_bytes)):
+        record = official_record(document_id, "tax").model_copy(
+            update={"size_bytes": len(content), "original_filename": "tax-guide.txt"}
+        )
+        await repository.save(record)
+        content_store.contents[("tax", document_id)] = content
+        service.document_statuses[document_id] = DocumentStatusResponse(
+            status="READY",
+            document_id=document_id,
+        )
+
+    async with await make_client() as client:
+        first = await client.put(
+            "/api/documents/tax/active-source",
+            json={"document_ids": [old_id]},
+        )
+        rejected = await client.put(
+            "/api/documents/tax/active-source",
+            json={"document_ids": [bad_id]},
+        )
+
+    assert first.status_code == 200
+    assert rejected.status_code == 409
+    assert "failed corpus quality checks" in rejected.json()["detail"]
+    active = await repository.get_active_source_selection("tax")
+    assert active is not None and active.active_document_ids == [old_id]
+
+
+@pytest.mark.asyncio
+async def test_source_health_reports_ready_invalid_and_missing_domains() -> None:
+    service = FakeAlignmentService()
+    repository = MemoryDocumentRepository()
+    content_store = override_dependencies(service, repository)
+    good_id = "good-tax-source"
+    bad_id = "bad-investment-source"
+    good_content = valid_corpus_text("tax", words=1_600)
+    bad_content = valid_corpus_text("investment", words=1_600).replace(
+        b"1. INVESTMENT SOURCE SUMMARY",
+        b"1. DOCUMENT MAINTENANCE",
+    )
+    good = official_record(good_id, "tax").model_copy(
+        update={"size_bytes": len(good_content), "original_filename": "tax-guide.txt"}
+    )
+    bad = official_record(bad_id, "investment").model_copy(
+        update={
+            "size_bytes": len(bad_content),
+            "original_filename": "investment-guide.txt",
+            "source_url": "https://investor.sebi.gov.in/",
+        }
+    )
+    await repository.save(good)
+    await repository.save(bad)
+    content_store.contents[("tax", good_id)] = good_content
+    content_store.contents[("investment", bad_id)] = bad_content
+    repository.active_selections["tax"] = ActiveSourceSelection(
+        domain="tax",
+        active_document_ids=[good_id],
+        revision=1,
+        changed_at=datetime(2026, 10, 17, tzinfo=timezone.utc),
+    )
+    repository.active_selections["investment"] = ActiveSourceSelection(
+        domain="investment",
+        active_document_ids=[bad_id],
+        revision=1,
+        changed_at=datetime(2026, 10, 17, tzinfo=timezone.utc),
+    )
+
+    async with await make_client() as client:
+        response = await client.get("/api/source-health")
+
+    assert response.status_code == 200
+    states = {item["domain"]: item for item in response.json()["domains"]}
+    assert states["tax"]["status"] == "ready"
+    assert states["investment"]["status"] == "invalid"
+    assert "register and activate" in states["investment"]["message"]
+    assert states["insurance"]["status"] == "missing"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("domain", ["tax", "investment", "insurance"])
 async def test_active_source_rejects_unready_or_unmatched_content_without_switching(
     domain: ExpertName,
@@ -662,8 +784,8 @@ async def test_active_source_rejects_unready_or_unmatched_content_without_switch
     content_store = override_dependencies(service, repository)
     old_id = f"old-{domain}-document"
     new_id = f"new-{domain}-document"
-    old_bytes = b"Original source content. " * 40
-    new_bytes = b"Updated source content. " * 40
+    old_bytes = valid_corpus_text(domain, words=1_600)
+    new_bytes = valid_corpus_text(domain, words=1_700)
     filename = f"{domain}_expert.txt"
     old_record = official_record(old_id, domain).model_copy(
         update={"size_bytes": len(old_bytes), "original_filename": filename}

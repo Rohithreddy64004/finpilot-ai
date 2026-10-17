@@ -10,6 +10,7 @@ import type {
   InferenceRequest,
   InferenceResponse,
   RetrievedEvidence,
+  SourceHealthResponse,
   SourceReference,
 } from '../types/api'
 
@@ -345,6 +346,9 @@ function parseAskExpert(value: unknown): AskExpertResult {
     }
   }
   const answer = requireString(value, 'answer')
+  const modelId = status === 'complete'
+    ? requireString(value, 'model_id')
+    : optionalString(value, 'model_id') ?? null
   const answerMarkers = [...answer.matchAll(/\[S[^\]\r\n]*\]/g)].map((match) => match[0])
   const answerIds = answerMarkers.map((marker) => /^\[(S\d+)\]$/.exec(marker)?.[1])
   if (answerIds.some((id) => !id || !knownIds.has(id)) || (grounded && answerIds.length === 0)) {
@@ -357,6 +361,7 @@ function parseAskExpert(value: unknown): AskExpertResult {
     expert,
     status,
     answer,
+    model_id: modelId,
     alignment_status: alignment,
     source_grounding_supported: grounded,
     source_grounding_note: optionalString(value, 'source_grounding_note') ?? '',
@@ -509,6 +514,54 @@ async function postJson(path: string, body: unknown, timeoutMs = REQUEST_TIMEOUT
 
 export async function requestAsk(request: AskRequest): Promise<AskResponse> {
   return parseAskResponse(await postJson('/api/ask', request, 180_000))
+}
+
+export async function requestSourceHealth(): Promise<SourceHealthResponse> {
+  const controller = new AbortController()
+  const timeout = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    let response: Response
+    try {
+      response = await fetch('/api/source-health', {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      })
+    } catch {
+      if (controller.signal.aborted) throw new ApiError('The source status check timed out. Please retry.')
+      throw new ApiError('Cannot reach FinPilot through the same-origin API path. Check that the backend server is running.')
+    }
+    const responseText = await response.text()
+    let payload: unknown
+    try {
+      payload = responseText ? JSON.parse(responseText) : undefined
+    } catch {
+      if (response.ok) throw new ApiError('The backend returned malformed source status data.')
+    }
+    if (!response.ok) throw new ApiError(errorForStatus(response.status, payload), response.status)
+    if (!isRecord(payload) || !Array.isArray(payload.domains)) {
+      throw new ApiError('The backend returned invalid active source status data.')
+    }
+    const domains = payload.domains.map((item) => {
+      if (!isRecord(item) ||
+          (item.domain !== 'tax' && item.domain !== 'investment' && item.domain !== 'insurance') ||
+          (item.status !== 'ready' && item.status !== 'missing' && item.status !== 'invalid') ||
+          typeof item.message !== 'string' || !Array.isArray(item.active_document_ids) ||
+          !item.active_document_ids.every((id) => typeof id === 'string') ||
+          !Array.isArray(item.issues) || !item.issues.every((issue) => typeof issue === 'string')) {
+        throw new ApiError('The backend returned an invalid active source status entry.')
+      }
+      return {
+        domain: item.domain as Domain,
+        active_document_ids: item.active_document_ids as string[],
+        status: item.status as SourceHealthResponse['domains'][number]['status'],
+        message: item.message,
+        issues: item.issues as string[],
+      }
+    })
+    return { domains }
+  } finally {
+    globalThis.clearTimeout(timeout)
+  }
 }
 
 export async function requestFeedback(queryId: string, rating: 'up' | 'down'): Promise<FeedbackResponse> {

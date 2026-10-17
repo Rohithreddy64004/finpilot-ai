@@ -32,8 +32,11 @@ DOMAIN_PUBLISHERS: dict[ExpertName, str] = {
 
 _ROOT = Path(__file__).resolve().parents[2] / "knowledge_bases"
 _TOKEN_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
-_HEADING_PATTERN = re.compile(
-    r"(?m)^\s*\d+\.\s+[A-Z][A-Z0-9 /&(),'-]*(?=\s+[A-Z][a-z])"
+_HEADING_PATTERN = re.compile(r"(?m)^\s*\d+\.\s+[^\r\n]+$")
+_INSTRUCTION_HEADING = re.compile(
+    r"\b(?:HOW\s+FINPILOT\s+SHOULD|DOCUMENT\s+MAINTENANCE|"
+    r"ASSISTANT\s+INSTRUCTIONS|YOU\s+ARE\s+FINPILOT\s+AI)\b",
+    re.IGNORECASE,
 )
 _CITATION_REFERENCE = re.compile(r"\[(S\d+)\]")
 _SOURCE_FIELDS = {
@@ -141,6 +144,12 @@ def _sections(text: str) -> list[str]:
         if section:
             sections.append(section)
     return sections
+
+
+def _is_instruction_heading(section: str) -> bool:
+    first_line = section.splitlines()[0].strip() if section.splitlines() else ""
+    heading = re.sub(r"^\d+\.\s*", "", first_line)
+    return _INSTRUCTION_HEADING.search(heading) is not None
 
 
 def _section_source_reference(
@@ -442,6 +451,8 @@ async def retrieve_domain_passages(
         )
         passage_index = 0
         for section in _sections(text):
+            if _is_instruction_heading(section):
+                continue
             source_reference = _section_source_reference(section, domain, fallback_reference)
             section_passages = _split_section_passages(_without_source_fields(section))
             for excerpt in section_passages:

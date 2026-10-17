@@ -1,118 +1,115 @@
-FINPILOT AI — INSURANCE EDUCATION KNOWLEDGE BASE Prepared: 15 October
-2026 Purpose: General insurance education. This document is not an
-insurance contract, coverage confirmation, legal opinion, or
-personalized recommendation.
+# INSURANCE EDUCATION: POLICY TERMS, WAITING PERIODS, AND CLAIMS
 
-OFFICIAL SOURCES 1. IRDAI consumer affairs and grievance redressal:
-https://irdai.gov.in/about-consumer-affairs 2. IRDAI policyholder
-portal: https://irdai.gov.in/en/web/policy-holder/ombudsman 3. IRDAI
-official website: https://irdai.gov.in/ 4. Official insurer policy
-wording, schedule, and customer-service documents should also be checked
-for each individual policy.
+Plain-prose educational summaries of official IRDAI consumer and policyholder material. Coverage and claim outcomes depend on the actual contract and the facts. These notes are not a policy interpretation, legal opinion, or personalized recommendation. Source links and access dates accompany each section.
 
-1.  WHAT INSURANCE DOES Insurance is a contract under which an insurer
-    provides specified financial protection subject to the policy’s
-    terms, conditions, exclusions, limits, and payment requirements. It
-    can help manage the financial effect of defined risks, but it does
-    not cover every possible loss. The policy document and schedule are
-    essential: a product name or sales brochure alone cannot confirm
-    that a particular event, treatment, item, or person is covered. The
-    insured should keep a copy of the policy, proposal details, premium
-    receipts, endorsements, and communications with the insurer.
+1. INSURANCE IS A CONTRACT WITH DEFINED COVER
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Department, Health Insurance Guidance
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI describes health insurance as a contract between a policyholder and an insurer. The insurer’s financial protection is bounded by the policy’s terms and conditions. The policy is therefore the primary place to check what events, expenses, people, limits, exclusions, and processes are covered. A product name, advertisement, or short explanation cannot establish the outcome of a particular claim. Read the policy schedule, wording, and customer information sheet, and ask the insurer for clarification where an important term is unclear. This general contract description is about health insurance material and should not be used to infer the terms of an unrelated life, motor, or other insurance product.
 
-2.  COMMON INSURANCE CATEGORIES Life insurance provides benefits defined
-    by the particular life policy. Health insurance may pay eligible
-    medical expenses or provide benefits according to its terms. Motor
-    insurance covers specified risks connected with a vehicle and may
-    include legally required and optional components. Property and other
-    general insurance policies address risks listed in the contract.
-    These categories are not interchangeable. Two policies within the
-    same broad category can have materially different conditions,
-    exclusions, limits, waiting periods, and claim procedures. Users
-    should compare actual policy wording, not only premiums or marketing
-    summaries.
+2. HEALTH COVER CAN TAKE DIFFERENT FORMS
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Insurance, Policy Holder
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI’s policyholder health-insurance material describes products that may cover hospitalization expenses, provide cashless payment at a network hospital, reimburse eligible expenses, or pay a fixed benefit when a defined illness occurs. It says the type and amount of health costs covered are specified in advance. These are different arrangements and their availability depends on the actual policy. The page explains that cashless services are connected with network hospitals and that costs outside policy limits or outside covered terms may remain payable by the policyholder. Always check the policy and insurer’s current network and claim instructions. Do not assume every health policy supports cashless treatment at every hospital.
 
-3.  PREMIUMS AND POLICY DETAILS A premium is the amount payable to
-    obtain or continue coverage under the contract. Price can depend on
-    factors defined by the insurer and product, but a low premium alone
-    does not establish good value. Compare the coverage amount,
-    deductibles or co-payments where applicable, sub-limits, exclusions,
-    waiting periods, renewal conditions, claim process, service
-    arrangements, and any applicable restrictions. Check the policy
-    schedule and wording for the exact insured persons, dates, sum
-    insured, add-ons, and endorsements. Do not assume a verbal statement
-    overrides the written policy.
+3. WHAT A WAITING PERIOD MEANS
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Department, Waiting Period Guidance
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI describes a waiting period as a period specified in the policy during which specified conditions, treatments, services, or situations are not covered. The timing and the items affected depend on the policy and applicable rules. A waiting period is not a general statement that every claim is excluded during the same period. The policyholder should identify the condition or service named in the policy, the start point, and the wording that governs continuity or renewal. This summary intentionally does not give one universal duration: IRDAI materials and product terms must be checked for the current rule that applies to the exact contract. Do not infer coverage from a general definition alone.
 
-4.  EXCLUSIONS, WAITING PERIODS, AND LIMITS An exclusion identifies a
-    situation or loss that the policy does not cover. A waiting period
-    is a specified period during which certain benefits may not be
-    available, depending on the contract and applicable rules. A
-    deductible, co-payment, or sub-limit can affect how much the insurer
-    pays. The meaning and applicability of these terms vary by policy.
-    For a real claim, read the policy wording and obtain written
-    clarification from the insurer if a clause is unclear. FinPilot must
-    not infer coverage from a general product description or promise
-    that a claim will be approved.
+4. PRE-EXISTING CONDITIONS AND DISCLOSURE
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Department, Buying Health Insurance Guidance
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI tells prospective health-insurance buyers to disclose pre-existing health problems. Its guidance warns that concealment can lead to a claim dispute and may lead to rejection of a claim or cancellation of a policy. It also says an insurer may require medical tests depending on the case and advises checking who bears the costs and following the required process. The policyholder should provide accurate information on the proposal and retain the policy documents issued after acceptance. The effect of a medical history, a waiting period, and coverage for a pre-existing condition depends on the wording and rules applicable to that policy. This explanation does not decide whether a particular condition is covered.
 
-5.  MAKING A CLAIM Claim requirements and deadlines depend on the policy
-    and type of event. Policyholders should notify the insurer or
-    authorized claims administrator according to the policy
-    instructions, preserve bills and supporting evidence, complete
-    required forms accurately, and retain copies of submissions and
-    reference numbers. For health claims, documents may include bills,
-    medical records, prescriptions, discharge summaries, and other
-    evidence requested under the policy. For motor or property claims,
-    relevant evidence may include photographs, invoices, incident
-    details, and official reports where required. These are examples,
-    not a universal checklist. The insurer’s current instructions and
-    policy terms control.
+5. READ THE CUSTOMER INFORMATION SHEET
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Department, Customer Information Sheet Guidance
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI says a customer information sheet, or CIS, is provided with an insurance policy and explains basic features in simple language. The health department material lists information that a CIS should contain, including the type of insurance, sum insured, coverage, exclusions, sub-limits, deductibles, waiting periods, and certain policy servicing items. It also says the CIS includes claims procedure, policy servicing, and grievance redressal details, including contact information relevant to an Insurance Ombudsman. The CIS is a useful summary, but it does not replace the policy contract. For a disputed term, compare the CIS with the issued policy wording and ask the insurer to clarify the controlling language.
 
-6.  CLAIM DENIAL OR DISAGREEMENT If a claim is delayed, reduced, or
-    rejected, request the insurer’s written explanation and identify the
-    policy clause or factual issue relied upon. Check whether required
-    documents were supplied and whether the insurer has explained the
-    next steps. Keep a timeline of calls, emails, letters, claim IDs,
-    and responses. Do not assume that every rejection is unlawful or
-    that every claim must be paid; the outcome depends on the contract,
-    evidence, and applicable rules. For significant disputes, consider
-    qualified legal or insurance advice.
+6. EXCLUSIONS, SUB-LIMITS, AND COST SHARING
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Department, Policy Restrictions and CIS Guidance
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI’s health guidance says buyers should look for restrictions such as room-rent or intensive-care limits, waiting periods, exclusions, sub-limits, and co-payments. It describes a co-payment as the policyholder sharing part of a claim and a sub-limit as a defined cap relevant to an expense or treatment. These terms can change how much an insurer pays even when the event relates to a covered treatment. Their effect cannot be calculated from a generic description; the applicable wording, sum insured, bills, and claim facts are needed. Before purchase, read those provisions and the customer information sheet. For a live claim, ask the insurer to identify the clause used in its decision.
 
-7.  GRIEVANCE REDRESSAL IN INDIA IRDAI’s official consumer-affairs
-    material advises policyholders and prospective policyholders to
-    first approach the insurance company with their grievance. If the
-    response is unsatisfactory or not received within a reasonable
-    period, the person may use the official IRDAI grievance channels.
-    IRDAI provides the Bima Bharosa grievance system and related
-    channels; users should confirm current contact details and
-    submission steps on the official IRDAI website. The Insurance
-    Ombudsman is another route for eligible individual policyholder
-    complaints, subject to the scheme’s current eligibility requirements
-    and limits. Check the current official rules before filing and
-    retain evidence of the initial complaint to the insurer.
+7. CASHLESS TREATMENT
+Source: https://irdai.gov.in/faqs-on-health-insurance-regulations
+Accessed: 2026-10-17
+Source title: FAQs on Health Insurance Regulations, Cashless Facility
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI’s health-insurance FAQ describes a cashless facility as direct payment by the insurer, or a third-party administrator on its behalf, to a network provider, to the extent preauthorization is approved under the policy. The FAQ says the facility is offered at network providers that have an agreement with the insurer. IRDAI’s policyholder information also warns that expenses beyond policy limits or expenses not covered by the policy may remain the policyholder’s responsibility. Cashless is therefore a payment arrangement subject to policy terms and authorization; it is not a guarantee that every bill will be paid. Confirm network status and follow the insurer’s current preauthorization instructions.
 
-8.  AVOIDING INSURANCE MISSELLING AND FRAUD Do not sign blank forms or
-    accept a policy without reading key terms. Ensure that proposal
-    information is complete and accurate; incorrect disclosures can
-    affect a claim. Verify that payments go through authorized channels
-    and retain receipts. Be cautious of guaranteed benefits not shown in
-    the policy, pressure to buy immediately, unofficial intermediaries,
-    and requests for OTPs or account passwords. If an agent’s
-    explanation conflicts with the written contract, seek written
-    clarification before purchase.
+8. REIMBURSEMENT CLAIMS
+Source: https://irdai.gov.in/faqs-on-health-insurance-regulations
+Accessed: 2026-10-17
+Source title: FAQs on Health Insurance Regulations, Reimbursement
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI’s FAQ says reimbursement may be available for treatment at a hospital or medical establishment subject to the terms and conditions of the policy contract and applicable licensing or registration requirements. In a reimbursement process, the policyholder pays the provider and submits a claim to the insurer for consideration under the contract. The exact documents, deadlines, and submission method must be taken from the policy and insurer’s current claims procedure; this general description is not a universal checklist. Keep the claim reference, bills, and insurer communication together as practical records, and ask the insurer to identify any missing document or policy clause if a claim is delayed or queried.
 
-9.  HOW FINPILOT SHOULD ANSWER INSURANCE QUESTIONS Ask which insurance
-    type and policy wording are involved when necessary. Separate
-    general explanations from statements about a particular policy. Cite
-    IRDAI material for grievance procedures and direct users to the
-    actual insurer’s current policy documents for coverage-specific
-    questions. Do not claim that an event is covered or that a claim
-    will succeed without reviewing the applicable policy terms and
-    facts. For urgent claims, disputes, or legal deadlines, encourage
-    direct contact with the insurer and an appropriate qualified
-    professional.
+9. STARTING A HEALTH CLAIM
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Department, Claims Procedure and Insurer Website Guidance
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI says an insurer’s website should provide details about the policy, empanelled hospitals, the cashless claim process, reimbursement claim steps, and applicable service turnaround times. The steps can differ by product and by whether the policyholder uses a network provider. A safe starting point is to contact the insurer or the service contact identified in the policy or customer information sheet, identify whether the request is cashless or reimbursement, and follow the current instructions for authorization and documents. This is a general process description, not a claim checklist or promise of approval. A policyholder should not rely on an unofficial intermediary’s summary when the insurer’s current policy documents give different instructions.
 
-DOCUMENT MAINTENANCE Check IRDAI’s current policyholder pages and
-applicable regulations periodically. Keep the access date with each
-source. Because policy wordings and grievance processes can change,
-avoid treating a copied guide as a substitute for the latest official
-instructions or the individual insurance contract.
+10. POLICY DETAILS TO KEEP AVAILABLE
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Department, Customer Information Sheet and Claims Information
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI’s material points policyholders to the policy and CIS for coverage, exclusions, waiting periods, claim procedure, servicing, and grievance contacts. Keeping the policy schedule, wording, CIS, premium receipts, endorsements, and the insurer’s written communication accessible can help a person check the terms relevant to a question. That is practical recordkeeping guidance, not a substitute for the insurer’s required claim documents. The required forms and evidence depend on the event, policy, and insurer’s current procedure. If an answer depends on a particular clause, inspect the actual issued documents rather than inferring it from a generic product description.
+
+11. CLAIM DECISIONS DEPEND ON POLICY TERMS AND FACTS
+Source: https://irdai.gov.in/faqs-on-health-insurance-regulations
+Accessed: 2026-10-17
+Source title: FAQs on Health Insurance Regulations, Claim Settlement
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI’s health FAQ states that insurance claims are to be disposed of in accordance with the policy contract and applicable regulations. A claim outcome can therefore depend on coverage wording, exclusions, preauthorization, required information, the expenses incurred, and the evidence submitted. A general guide cannot determine if a specific illness, treatment, bill, or person is covered. Neither the existence of a policy nor submission of a claim establishes that the insurer must pay the entire amount claimed. Ask the insurer to explain the decision with reference to the applicable contract terms. If the facts or medical and legal issues are complex, obtain suitable professional help.
+
+12. WHAT TO DO WHEN A CLAIM IS DISPUTED
+Source: https://irdai.gov.in/about-consumer-affairs
+Accessed: 2026-10-17
+Source title: Policyholders Protection and Grievance Redressal
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI advises prospects and policyholders to first take a grievance to the insurance company. Its consumer-affairs department handles grievances involving insurers and may take them up with the company for redressal. The page describes the regulator’s role as facilitating redress and, where required, carrying out investigation or enquiry. A policyholder can ask the insurer for a written explanation, the policy clause relied on, and any outstanding information required. Keep copies of the complaint and response as useful records. The regulator’s process does not itself decide that every claim must be paid; the terms, evidence, and current rules remain relevant.
+
+13. IRDAI GRIEVANCE CHANNELS
+Source: https://irdai.gov.in/grievance-redressal-mechanism1
+Accessed: 2026-10-17
+Source title: Grievance Redressal Mechanism
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI’s grievance page says policyholders should first approach the concerned insurer’s grievance redressal cell. If the insurer does not respond within a reasonable period or the policyholder is dissatisfied, the person may approach IRDAI’s grievance redressal cell. The page lists Bima Bharosa, email, phone, and physical correspondence as channels. It also says the complainant should provide the details requested in the registration form, because incomplete information may prevent the complaint from being registered. Contact details and online processes can change, so check the current official page before using them. This summary does not reproduce personal contact details or claim that any one channel guarantees a particular outcome.
+
+14. INSURANCE OMBUDSMAN
+Source: https://irdai.gov.in/en/web/policy-holder/ombudsman
+Accessed: 2026-10-17
+Source title: Ombudsman, Policy Holder
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI describes the Insurance Ombudsman as a route for eligible policyholder complaints. Its page says a complainant must first have approached the insurance company and describes circumstances such as rejection, dissatisfaction, or no response. The page covers complaint categories that include claim delays, partial or total repudiation, disputes about premium, and policy-term misrepresentation. Eligibility, territorial jurisdiction, claim-value conditions, process, and time limits are governed by the current scheme. Check the official Ombudsman rules and current IRDAI page before filing; the broad summary here does not decide whether a specific complaint is eligible. Preserve the insurer’s complaint and response details when seeking further review.
+
+15. POLICY SERVICING AND RENEWAL
+Source: https://irdai.gov.in/health-dept
+Accessed: 2026-10-17
+Source title: Health Department, Renewal and Policy Servicing Guidance
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI advises health policyholders to renew on time and says a delay may affect coverage of an insured event or continuity benefits. The actual renewal date, premium, grace provisions, and effect of a missed payment should be checked in the contract and current official rules. A general explanation cannot establish that a specific policy remains in force. Policyholders should keep confirmation of renewal and consult the insurer if payment or policy status is uncertain. Details of the current policy, network providers, claims process, service times, and grievance contacts should be checked on the insurer’s website and official IRDAI resources rather than inferred from another product.
+
+16. LIMITATIONS AND CURRENT SOURCE CHECKS
+Source: https://irdai.gov.in/web/policy-holder/what-we-do
+Accessed: 2026-10-17
+Source title: What We Do, Policy Holder
+Publisher: Insurance Regulatory and Development Authority of India
+IRDAI’s policyholder website describes its mission as protecting policyholder interests and regulating the insurance industry. This educational file summarizes selected public IRDAI pages, but it is not an insurance contract and cannot confirm coverage, claim admissibility, or the result of a grievance. Insurance rules, insurer procedures, products, network hospitals, and contact channels may change. The access date is a record of when the cited material was checked, not a promise that every detail remains current. If the relevant source is missing or stale, say so and retrieve current official guidance. For a particular claim, use the issued policy and contact the insurer; for significant disputes, consider appropriate professional advice.

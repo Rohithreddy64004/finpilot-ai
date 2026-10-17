@@ -54,9 +54,14 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
               <summary>
                 <span>{expertNames[expert.expert]} expert</span>
                 <span className="expert-summary-badges">
-                  <StatusBadge tone={expert.alignment_status === 'aligned' ? 'positive' : 'neutral'}>
-                    {expert.alignment_status === 'aligned' ? 'Aligned model' : 'Base model (not aligned)'}
+                  <StatusBadge tone={expert.status === 'error' ? 'caution' : expert.alignment_status === 'aligned' ? 'positive' : 'neutral'}>
+                    {expert.status === 'error'
+                      ? 'No model used'
+                      : expert.alignment_status === 'aligned'
+                        ? 'Aligned model'
+                        : 'Base model (not aligned)'}
                   </StatusBadge>
+                  {expert.model_id && <code className="expert-model-id">{expert.model_id}</code>}
                   <ChevronDown className="details-chevron" size={15} />
                 </span>
               </summary>

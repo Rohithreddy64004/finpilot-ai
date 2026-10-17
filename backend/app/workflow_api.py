@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
 from backend.app.config import get_settings
+from backend.app.corpus_quality import inspect_corpus_text
 from backend.app.evidence_retrieval import (
     SourceContentUnavailableError,
     load_registered_document_text,
@@ -50,6 +51,8 @@ from backend.app.schemas import (
     ExpertName,
     SourceDocumentListResponse,
     SourceDocumentRecord,
+    SourceDomainHealth,
+    SourceHealthResponse,
 )
 from backend.app.source_documents import (
     ActiveSourceConflictError,
@@ -57,6 +60,7 @@ from backend.app.source_documents import (
     SourceDocumentRepository,
     SourceDocumentStoreError,
 )
+from backend.app.source_diagnostics import diagnose_active_sources
 
 
 router = APIRouter(prefix="/api", tags=["document preparation"])
@@ -396,7 +400,7 @@ async def _validate_active_source_set(
                 ),
             )
         try:
-            await load_registered_document_text(domain, record, content_store)
+            text = await load_registered_document_text(domain, record, content_store)
         except SourceContentUnavailableError as exc:
             raise HTTPException(
                 status_code=409,
@@ -405,6 +409,21 @@ async def _validate_active_source_set(
                     "The active source selection was not changed."
                 ),
             ) from None
+        _, quality_issues = inspect_corpus_text(
+            record.original_filename,
+            text,
+            domain=domain,
+        )
+        if quality_issues:
+            issue_summary = "; ".join(quality_issues)
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Document {document_id!r} cannot be activated because its local text "
+                    f"failed corpus quality checks: {issue_summary}. "
+                    "Review the document and activate a verified source; the active source selection was not changed."
+                ),
+            )
 
 
 @router.get(
@@ -424,6 +443,42 @@ async def get_active_source(
             detail=f"No active source set has been explicitly selected for {domain}.",
         )
     return selection
+
+
+@router.get("/source-health", response_model=SourceHealthResponse)
+async def get_source_health(
+    repository: SourceDocumentRepository = Depends(get_document_repository),
+    content_store: LocalSourceContentStore = Depends(get_source_content_store),
+) -> SourceHealthResponse:
+    """Report active-source availability and local corpus quality without provider calls."""
+
+    diagnostics = await diagnose_active_sources(repository, content_store)
+    domains: list[SourceDomainHealth] = []
+    for item in diagnostics:
+        domain = item["domain"]
+        status = item["status"]
+        if status == "missing":
+            message = (
+                f"No active {domain} source is selected. Register a verified official corpus "
+                "and activate it before asking this expert."
+            )
+        elif status == "invalid":
+            message = (
+                f"The active {domain} source fails local quality checks. Review the corpus, "
+                "then register and activate a verified source before retrying."
+            )
+        else:
+            message = f"The active {domain} source passed local quality checks."
+        domains.append(
+            SourceDomainHealth(
+                domain=domain,
+                active_document_ids=item["active_document_ids"],
+                status=status,
+                message=message,
+                issues=item["issues"],
+            )
+        )
+    return SourceHealthResponse(domains=domains)
 
 
 @router.put(
