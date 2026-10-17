@@ -1,6 +1,6 @@
 # FinPilot AI
 
-FinPilot AI is a finance education assistant for the Nugen Intelligence hiring challenge. The current backend provides separate Indian tax, investment, and insurance document sets with domain-scoped retrieval and inference. Multi-expert routing, synthesis, feedback, verified corrections, and benchmark evaluation remain planned.
+FinPilot AI is a multi-expert educational finance assistant for the Nugen Intelligence hiring challenge. The FastAPI backend routes questions to Indian tax, investment, and insurance experts, reuses the existing domain-scoped retrieval and inference pipeline, and synthesizes only source-backed expert results.
 
 The FastAPI backend includes a dedicated async Nugen API v3 client, typed provider schemas, document upload/list/status routes, a separate MongoDB provenance registry for each expert corpus, a local domain-scoped BM25 retriever, and a manually invoked inference check. No Nugen call runs at application startup. Alignment jobs and deployments have explicit confirmation-gated API routes; the application never starts them automatically. Base-model answers report `unaligned`.
 
@@ -29,7 +29,33 @@ finpilot-ai/
 └── frontend/                 # React + TypeScript + Vite chat UI
 ```
 
-Remaining planned backend areas include multi-expert question routing and synthesis, feedback, verified corrections, and benchmark evaluation. Feedback and verified corrections will remain separate records; user feedback alone will not become ground truth.
+The implemented request path uses a model-assisted router with keyword fallback, concurrent domain experts, shared retrieval and citation checks, and a citation-validated synthesizer. Queries, user feedback, and reviewer-verified corrections are stored separately. User feedback is never promoted to ground truth automatically.
+
+## Architecture
+
+~~~mermaid
+flowchart LR
+  UI[React chat UI] --> ASK[POST /api/ask]
+  ASK --> ROUTER[Router]
+  ROUTER -->|selected domains| EXPERTS[Concurrent domain experts]
+  ROUTER -->|out of scope| SAFE[Safe out-of-scope response]
+  EXPERTS --> INFER[Shared per-domain inference]
+  INFER --> DOCS[Mongo active-source and READY checks]
+  INFER --> TEXT[Domain-filtered per-domain BM25 from local UTF-8 source content]
+  INFER --> NUGEN[Nugen chat completions]
+  EXPERTS --> SYNTH[Synthesizer with real passage IDs]
+  SYNTH --> UI
+  ASK --> QUERY[(queries)]
+  UI --> FEEDBACK[POST /api/feedback]
+  FEEDBACK --> FB[(feedback)]
+  EVAL[Fixed benchmark and run_eval.py] --> ROUTER
+  EVAL --> EXPERTS
+  EVAL --> METRICS[Routing, coverage, grounding, latency]
+  REVIEW[Authenticated reviewer] --> CORR[POST /api/verified-corrections]
+  CORR --> VC[(verified_corrections)]
+~~~
+
+POST /api/inference remains available for a single explicitly selected domain. POST /api/ask records the question, routes or applies an expert override, calls selected experts concurrently, and synthesizes only grounded answers. Unknown or malformed citation markers cause wording to be withheld.
 
 ## Windows PowerShell setup
 
@@ -43,7 +69,7 @@ python -m pip install -r backend\requirements.txt
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Start MongoDB locally or configure `MONGODB_URI` for an async-compatible MongoDB deployment. The app connects lazily when document provenance is read or written, uses `MONGODB_TIMEOUT_MS` (default 10000) for server selection, connection establishment, and socket operations, and creates a unique index on each domain's `document_id` after a successful ping. Index initialization does not delete or replace records; if duplicate IDs already exist in a domain collection, index creation fails safely and needs manual review. Set `NUGEN_API_KEY` in `.env` before making Nugen requests. Keep `.env` private. `NUGEN_API_KEY` and `MONGODB_URI` are stored as Pydantic `SecretStr` values; repository diagnostics log operation and exception type, never the URI or exception text.
+Start MongoDB locally or configure `MONGODB_URI` for MongoDB Atlas. The app connects lazily when document provenance is read or written and creates unique per-domain document ID indexes after a successful ping. Index initialization preserves records and fails safely if duplicate IDs need manual review. Set `NUGEN_API_KEY` before making Nugen requests. Keep `.env` private; the key and Mongo URI use Pydantic `SecretStr`, and repository diagnostics omit URI and exception text.
 
 Run the API and its local tests:
 
@@ -56,35 +82,32 @@ The liveness endpoint is `http://127.0.0.1:8000/health`; interactive API docs ar
 
 ## Frontend
 
-The React client uses the current `POST /api/inference` contract and displays answer evidence, source references, claim assessments, model alignment, limitations, and the educational disclaimer. It keeps Nugen and MongoDB credentials on the backend. Follow [frontend/README.md](frontend/README.md) for npm installation, `VITE_API_BASE_URL`, CORS setup, PowerShell run commands, and test/build checks.
+The existing React client now calls POST /api/ask by default and displays the routing decision, per-expert answers, source passages, model alignment state, claim assessments, and feedback controls. The optional checkboxes send an explicit expert override; with no boxes checked, the router decides. Model text is rendered through React and the existing safe Markdown component; raw HTML is not enabled. Nugen and MongoDB credentials stay on the server.
 
-The local Vite origins `http://localhost:5173` and `http://127.0.0.1:5173` are allowed by default. Set `CORS_ALLOWED_ORIGINS` to exact trusted origins when hosting elsewhere; wildcard origins and credentialed CORS are not enabled.
+For local development, Vite proxies `/api` and `/health` to FastAPI, so the browser still uses one origin. The backend grants no CORS origins in any environment.
 
 ## Nugen configuration
 
 The default API base URL is `https://api.nugen.in`; override it with `NUGEN_API_BASE_URL` only for a documented Nugen host. The client uses HTTPS, an explicit timeout, and a bounded number of retries for GET requests. It does not retry POST requests, which could duplicate inference, uploads, alignment jobs, or deployments.
 
-Configure these optional values in `.env`:
+Configuration is loaded from the environment or a local .env file. `.env.example` contains the supported variable names with empty values only. Supply values locally or in the deployment secret manager; never put them in source control or logs.
 
-```text
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DATABASE=finpilot
-MONGODB_TIMEOUT_MS=10000
-SOURCE_CONTENT_DIRECTORY=knowledge_bases/source_documents
-NUGEN_API_KEY=
-NUGEN_API_BASE_URL=https://api.nugen.in
-NUGEN_TIMEOUT_SECONDS=30
-NUGEN_GET_RETRIES=1
-NUGEN_TEST_MODEL_ID=
-NUGEN_TAX_MODEL_ID=
-NUGEN_INVESTMENT_MODEL_ID=
-NUGEN_INSURANCE_MODEL_ID=
-NUGEN_CLAIM_VERIFIER_MODEL_ID=
-```
+~~~text
+MONGODB_URI
+MONGODB_DATABASE
+NUGEN_API_KEY
+NUGEN_API_BASE_URL
+NUGEN_TEST_MODEL_ID
+NUGEN_TAX_MODEL_ID
+NUGEN_INVESTMENT_MODEL_ID
+NUGEN_INSURANCE_MODEL_ID
+FINPILOT_CORRECTION_REVIEW_TOKEN
+SEED_CONTENT_ON_STARTUP
+~~~
 
-`NUGEN_CLAIM_VERIFIER_MODEL_ID` is optional and disabled when empty. If configured, it must be a separate model from the answer model and must appear in Nugen's current base-model response as inference-ready `text-generation`. It makes one additional Nugen completion per cited claim and can consume credits. The verifier must return strict JSON with evidence IDs and exact passage quotes; FinPilot checks every quote against the cited retrieved passages. Invalid model readiness, provider errors, malformed JSON, unknown evidence IDs, or non-matching quotes fail closed. This is an automated model assessment, not a human or authoritative legal review.
+If a separate claim verifier is configured in the application, it must return strict structured output tied to the cited passages. Invalid readiness, provider errors, malformed output, unknown evidence IDs, or non-matching quotes fail closed. This automated model assessment is not a human or authoritative legal review.
 
-With no verifier configured, FinPilot performs a conservative direct text comparison against complete sentences in passages cited on that claim. It requires the same ordered words and does not use keyword overlap or paraphrase inference. Exact sentence matches are returned as `supported` with `assessment_basis: "source_text_comparison"`; this is not semantic or independent verification. Paraphrases, unsupported text, and contradictions remain `unverified`. A configured verifier's status alone is insufficient: a conclusive result also needs an exact quote from a passage cited on that claim, and a supported numeric claim must have every stated number in that quote. These checks still do not prove entailment or factual truth. Summary states `evidence_supported`, `partially_supported`, and `verification_unavailable` distinguish direct source-text results from `fully_verified` and `partially_verified`, which describe a successful configured separate-model assessment with locally validated quotes. `independent_verification_performed` is true only when that verifier actually completed an assessment.
+Without an independent verifier, claims can receive only a conservative direct source-text comparison against complete sentences in evidence cited on that claim. This check avoids keyword-only overlap and paraphrase inference, and does not establish semantic entailment or factual correctness. Paraphrases and contradictions remain inconclusive. A configured verifier's label alone is insufficient: a conclusive result also needs a matching quote from evidence cited on that claim; numeric claims must match their stated numbers. `independent_verification_performed` is true only when a configured verifier actually completed an assessment.
 
 RAG code is in `backend/app/evidence_retrieval.py` (domain-filtered local BM25 ranking), `backend/app/source_content_store.py` (private per-domain upload text), and `backend/app/inference_api.py` (READY checks, prompt context, answer guards, and citation-to-source mapping). No semantic embedding index is configured. Tax slab questions use a deterministic term expansion and a passage reranker that promotes text containing slab terminology, currency thresholds, and percentage rates; it does not add tax facts. Tax slab answers are not generated when retrieved passages lack usable thresholds and rates. A second literal check withholds a draft if numeric values in a tax-slab claim do not appear in that claim's cited passage. That check does not prove the values are correctly associated with each band or that rules are current.
 
@@ -92,7 +115,7 @@ The chat client sends a non-streaming request with `model`, `messages`, `max_tok
 
 ## Document preparation workflow
 
-The application accepts one official-source text document per upload. Nugen documents at least 500 words per file and a 100 MB per-file maximum; its developer edition accepts plain-text documents. FinPilot requires UTF-8 and accepts `.txt` and `.md` only, rejecting PDFs and other formats before forwarding a file. The original upload bytes are also saved locally under `SOURCE_CONTENT_DIRECTORY`, keyed by domain and a hash of the Nugen document ID. The three expert sets are stored in separate MongoDB collections and uploaded to Nugen with separate categories:
+The application accepts one official-source text document per upload. Nugen documents at least 500 words per file and a 100 MB per-file maximum; its developer edition accepts plain-text documents. FinPilot requires UTF-8 and accepts `.txt` and `.md` only, rejecting PDFs and other formats before forwarding a file. The original upload bytes are also saved locally under the configured source-content directory, keyed by domain and a hash of the Nugen document ID. The three expert sets are stored in separate MongoDB collections and uploaded to Nugen with separate categories:
 
 | Domain | Allowed official source hosts | Nugen category |
 |---|---|---|
@@ -120,6 +143,10 @@ Official starting points: [Income Tax Department](https://www.incometax.gov.in/i
 | `GET /api/alignments/{alignment_id}/status` | Polls Nugen status, maps the returned `alignment_id` to a model row, checks deployment status, and persists the verified state. |
 | `POST /api/alignments/{alignment_id}/deploy` | Explicitly deploys a completed model only with `confirm_deployment: true`; deployment is never automatic. |
 | `POST /api/inference` | Checks selected-domain READY documents, verifies the selected model, retrieves relevant local passages, and returns source references plus separate per-claim verification state. |
+| `POST /api/ask` | Routes or applies an expert override, runs selected domain experts concurrently, and validates synthesis citations against real retrieved passages. |
+| `POST /api/feedback` | Stores a query ID, up/down rating, and optional user correction separately from verified corrections. |
+| `GET /api/feedback/summary` | Returns aggregate feedback counts and verified-correction count without comments or question text. |
+| `POST /api/verified-corrections` | Stores a reviewer-attested correction only with the configured bearer token and HTTPS sources. |
 
 ### Test domain inference in Swagger
 
@@ -137,7 +164,7 @@ Open `http://127.0.0.1:8000/docs`, expand `POST /api/inference`, choose **Try it
 
 `domain` must be `tax`, `investment`, or `insurance`; `question` must contain non-whitespace text. `model_id` is optional. Before retrieval, FinPilot checks live Nugen status only for the explicitly active document IDs in the requested domain. If no active set exists, the request fails closed; other `READY` records are never implicitly included. It ranks passages locally and sends only selected-domain passages to Nugen's documented chat-completions API as system context; Nugen itself does not accept document IDs or return source references. For a tax-slab question, table passages are prioritized and the model is not called when retrieved text does not contain both thresholds and rates.
 
-Newly uploaded source bytes are stored in `SOURCE_CONTENT_DIRECTORY` (default: `knowledge_bases/source_documents`). For the three pre-existing READY records, the repository includes local `knowledge_bases/{tax,investment,insurance}_expert.txt` files. FinPilot reuses one only when its fixed domain filename and exact byte size match the registered Mongo record. Those older records do not have a content checksum, so the match is not cryptographic proof that the bytes are identical to the original upload. Add and verify a checksum or re-ingest the original file if stronger provenance is required; do not upload it again to Nugen solely for local retrieval.
+Newly uploaded source bytes are stored in the local source-content store (default: `knowledge_bases/source_documents`). For the three pre-existing READY records, the repository includes local `knowledge_bases/{tax,investment,insurance}_expert.txt` files. FinPilot reuses one only when its fixed domain filename and exact byte size match the registered Mongo record. Those older records do not have a content checksum, so the match is not cryptographic proof that the bytes are identical to the original upload. Add and verify a checksum or re-ingest the original file if stronger provenance is required; do not upload it again to Nugen solely for local retrieval.
 
 Responses contain `evidence` with exact retrieved excerpts, Nugen document IDs, passage IDs, and `[S1]`-style citation markers. `source_references` use the URL and retrieval date recorded with each document. `source_grounding_supported` reports that real retrieved text was included and citations resolve to known passages; it is separate from `claim_verification_status`.
 
@@ -334,7 +361,7 @@ Document constraints stated in Nugen’s upload documentation: each uploaded doc
 
 ## Alignment submission and verification
 
-No alignment or deployment job has been submitted by this implementation. Nugen's create operation is asynchronous and may incur cost. Only call `POST /api/alignments/submit` after reviewing a fresh preview, with `confirm_submission: true`. This request is the explicit action that starts a real job; there is no background or automatic submission.
+No alignment job is started by application startup, evaluation, or ordinary chat requests. Nugen's create operation is asynchronous and may incur cost. Only call `POST /api/alignments/submit` after reviewing a fresh preview, with `confirm_submission: true`. Provider status is checked through the existing workflow; a result is called aligned only after Nugen confirms successful alignment and a deployed inference-ready model.
 
 For each expert, submit its own domain and document IDs. The provided IDs are tax `document_01m4zddgyc6jbwcn`, investment `document_01m4zejvsaxae9hr`, and insurance `document_01m4zepm5h3246v7`. Before submitting, verify the model ID and the source document status through the preview route; the service checks Nugen's current `alignment_ready` and document `READY` responses.
 
@@ -383,7 +410,7 @@ FinPilot AI is for general financial education, not licensed advice. It will avo
 
 ## Release checks and operations
 
-The API root returns the service name and links to `/docs`, `/health`, and `/ready`. `GET /health` is process liveness only. `GET /ready` checks that the Nugen key is configured and asks MongoDB to ping and initialize the non-destructive unique document-ID indexes. It does not call Nugen, confirm that a model is inference-ready, or prove that any source document is active. A 503 response means the corresponding local dependency check did not pass.
+The API root serves the compiled React client when present. `GET /health` is process liveness only. `GET /ready` checks that the Nugen key is configured and asks MongoDB to ping and initialize the non-destructive unique document-ID indexes. It does not call Nugen, confirm that a model is inference-ready, or prove that any source document is active. A 503 response means the corresponding local dependency check did not pass.
 
 From the repository root, run the local quality gates in PowerShell:
 
@@ -410,6 +437,86 @@ No provider operation was performed for this review. Active-source selections an
 
 ### GitHub and production deployment status
 
-The complete project snapshot and current changes have a local Git commit, but this checkout has no configured Git remote. It also has no host-specific deployment manifest or hosting target. A public push or production deployment cannot be verified or performed until a GitHub remote and authorized hosting destination are configured. Do not add credentials to a workflow file: store any future deployment credential in the selected host's secret manager or a GitHub Actions secret, and never print it in a job log. Review GitHub's [Actions secrets guidance](https://docs.github.com/en/actions/reference/security/secrets) before adding a release workflow.
+The repository now includes a Dockerfile for a one-service deployment. No production deployment or push was performed. Configure secrets in the chosen hosting provider's secret manager; do not place them in a workflow or image layer.
 
-The current readiness route is suitable for checking the local service prerequisites, not a production deployment check. Hosting selection, production CORS origin, backend URL, MongoDB reachability from that host, secret provisioning, domain/TLS configuration, and public browser/API smoke tests remain deployment steps.
+Production CORS is disabled because the React UI and API are served from the same origin. A hosting provider still needs the MongoDB connection, Nugen credentials and model IDs, optional reviewer token, persistent storage for uploaded source content, TLS, and public smoke checks.
+
+## Multi-expert API, feedback, and evaluation
+
+Open Swagger at http://127.0.0.1:8000/docs. A minimal ask request is:
+
+~~~json
+{
+  "question": "How do saving and investing differ?",
+  "applicable_date": "2026-10-17"
+}
+~~~
+
+Omit experts to let the router choose, or supply an experts array with one or more of tax, investment, and insurance. The response includes the routing method and reason, individual expert results, final answer, actual source passages, gaps, and per-stage timings. An out-of-scope router result invokes no expert.
+
+The response request_id is the query_id for POST /api/feedback. Feedback records can include an up/down rating, comment, and suggested experts; they are never used as verified truth. GET /api/feedback/summary exposes aggregate counts only. A separate reviewer can POST /api/verified-corrections with a correction, reviewer attestation, and HTTPS source references. That endpoint is disabled unless FINPILOT_CORRECTION_REVIEW_TOKEN is configured in the server environment and the request includes its bearer token. Ordinary feedback cannot create a correction.
+
+The fixed benchmark is eval/questions.json. scripts/run_eval.py has two modes:
+
+~~~powershell
+.\.venv\Scripts\python.exe scripts\run_eval.py --routing-only
+~~~
+
+Router-only mode skips baseline and domain-expert answers, but can still call the configured router model. Full before/after evaluation makes a direct base-model call and full /api/ask requests for the same cases; it requires the deliberate --confirm-full-eval option and can consume Nugen credits. It was not run during this change. Results are written under eval/results_*.json and are ignored by Git.
+
+| Metric | Baseline | Full system |
+|---|---:|---:|
+| Routing accuracy | Placeholder — not measured | Placeholder — not measured |
+| Required-term coverage | Placeholder — not measured | Placeholder — not measured |
+| Grounded-answer rate | Placeholder — not measured | Placeholder — not measured |
+| Average latency | Placeholder — not measured | Placeholder — not measured |
+| Failure cases | Placeholder — not measured | Placeholder — not measured |
+
+## Corpus and source-content readiness
+
+Run the corpus checks with:
+
+~~~powershell
+.\.venv\Scripts\python.exe scripts\check_corpus.py
+~~~
+
+The checker reports per-file word counts and fails for missing source/date metadata, fewer than 500 words, or known assistant-instruction and document-maintenance headings. The current Investment and Insurance active knowledge files contain such instruction headings and are flagged. Their knowledge-base contents were intentionally left unchanged; clean those files in a separately reviewed corpus edit before using this check as a deployment gate.
+
+For the three legacy registrations, a fresh deployment needs the Mongo provenance and active-source records plus the matching committed `knowledge_bases/{tax,investment,insurance}_expert.txt` file. Legacy retrieval accepts a file only when its byte count matches registered metadata; missing content, invalid UTF-8, or mismatched bytes returns a clear source-content error. New uploads are stored under `knowledge_bases/source_documents/`, which is excluded from the image and Git. The local-only seeder copies the matching committed file to the hashed content-store path only for registered `READY` records, only when byte counts match, and only when content is missing. It never overwrites and never calls Nugen:
+
+~~~powershell
+.\.venv\Scripts\python.exe scripts\seed_content.py
+~~~
+
+To opt into the same idempotent local seed on API startup, set `SEED_CONTENT_ON_STARTUP` to `true`. It reads Mongo metadata and committed files only. Leave it unset/false if you want startup to avoid that Mongo read. The active-source registry and provider statuses remain independently required; seeding does not register, upload, activate, align, or deploy anything.
+
+The API applies an in-memory per-process request limit to `/api/ask` and `/api/inference`, caps JSON inference bodies at 1 MiB, and caps questions at 2,000 characters. In-memory limits reset on restart and are not shared between multiple workers. Production CORS is disabled because the API and compiled frontend share one origin; local development allows the Vite origins.
+
+## Docker deployment
+
+Build and run locally from the repository root:
+
+~~~powershell
+docker build -t finpilot-ai .
+docker run --rm -p 8000:8000 finpilot-ai
+~~~
+
+The image builds the existing React application in a Node stage, then serves its compiled files and FastAPI from one Python service. For Render, create a Docker web service from this repository, use `/health` for the health check, and let the service bind to the platform's `PORT`. Create a MongoDB Atlas cluster and database user, allow the Render outbound IP range (or use an approved network access policy), require TLS, and put the Atlas connection string in the Render secret manager as `MONGODB_URI`. Add `MONGODB_DATABASE`, `NUGEN_API_KEY`, `NUGEN_API_BASE_URL`, and the configured model ID variables there. Add `FINPILOT_CORRECTION_REVIEW_TOKEN` only when reviewer corrections are enabled. Attach a persistent disk at `/app/knowledge_bases/source_documents` so uploaded source text survives redeploys. Set `SEED_CONTENT_ON_STARTUP` only if you want the opt-in local seed from the image's committed corpus and existing READY Mongo records. Do not put secret values in Dockerfile, build arguments, Git, or README. After deployment, check `/health`, `/docs`, active-source selections, and provider alignment/deployment status before testing inference.
+
+## Current verification and limitations
+
+No model alignment, live provider state, production deployment, or benchmark result was checked during this work. Do not infer alignment from a configured model ID: the application should report aligned only after Nugen confirms completion, deployment, and inference readiness. Retrieval uses local BM25 with deterministic term expansion, not semantic embeddings. Without a configured verifier, claim status is limited to conservative source-text comparison and does not establish semantic entailment; even automated verification is not human or legal review. The corpus is educational and dated, and its retrieval date does not prove that a rule is current.
+
+| Expert domain | Alignment verification in this run |
+|---|---|
+| Tax | Not queried; alignment is not established by this report |
+| Investment | Not queried; alignment is not established by this report |
+| Insurance | Not queried; alignment is not established by this report |
+
+What I would do next:
+
+1. Replace the flagged Investment and Insurance instruction text with reviewed official-source content; do not deploy while the corpus checker fails.
+2. Create MongoDB Atlas, then migrate or re-register the existing document/provenance and active-source records and run the safe content seeder.
+3. Set Render's environment variable names in its secret manager, check each provider alignment and deployment status, then deploy and smoke-test.
+4. Run `scripts/run_eval.py --routing-only` and review the fixed benchmark before making performance claims.
+5. Push the reviewed commits to GitHub, deploy, submit the hiring challenge, and book the interview. Any paid alignment or deployment request still requires explicit review and confirmation.

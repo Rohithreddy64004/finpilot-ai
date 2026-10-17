@@ -1,0 +1,52 @@
+[
+  {
+    "question": "How do individual income-tax slabs work?",
+    "experts": ["tax"],
+    "reason": "The question is about Indian income-tax slab rules."
+  },
+  {
+    "question": "What is the difference between saving and investing?",
+    "experts": ["investment"],
+    "reason": "The question asks for investment education about saving and investing."
+  },
+  {
+    "question": "What does a health insurance waiting period mean?",
+    "experts": ["insurance"],
+    "reason": "The question asks about an insurance policy term."
+  },
+  {
+    "question": "How are capital gains taxed when I sell mutual funds?",
+    "experts": ["tax", "investment"],
+    "reason": "The question combines investment-product context with Indian tax treatment."
+  },
+  {
+    "question": "Should I build an emergency fund before buying health insurance?",
+    "experts": ["investment", "insurance"],
+    "reason": "The question combines personal-finance education and insurance coverage."
+  },
+  {
+    "question": "How do I compare tax deductions with investing through a mutual fund?",
+    "experts": ["tax", "investment"],
+    "reason": "The question covers tax deductions and an investment product."
+  },
+  {
+    "question": "How does a premium payment affect my tax return and policy renewal?",
+    "experts": ["tax", "insurance"],
+    "reason": "The question asks about both tax-return treatment and an insurance policy."
+  },
+  {
+    "question": "What should I know about a tax-saving mutual fund and its risks?",
+    "experts": ["tax", "investment"],
+    "reason": "The question combines tax treatment and investment risk."
+  },
+  {
+    "question": "What is the weather forecast in Mumbai tomorrow?",
+    "experts": [],
+    "reason": "Out of scope: this is a weather question, not a finance-education question."
+  },
+  {
+    "question": "Can you write a poem about the monsoon?",
+    "experts": [],
+    "reason": "Out of scope: this creative-writing request is unrelated to finance education."
+  }
+]
