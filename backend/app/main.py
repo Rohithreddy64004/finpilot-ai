@@ -1,14 +1,21 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+import logging
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.app.alignment_jobs import MongoAlignmentJobRepository
+from backend.app.ask_api import router as ask_router
 from backend.app.config import Settings, get_settings
+from backend.app.content_seeding import seed_registered_content
 from backend.app.inference_api import router as inference_router
+from backend.app.interactions import MongoInteractionRepository
+from backend.app.interaction_api import router as interaction_router
 from backend.app.nugen.errors import (
     NugenAPIError,
     NugenAuthenticationError,
@@ -17,7 +24,9 @@ from backend.app.nugen.errors import (
     NugenRateLimitError,
     NugenTimeoutError,
 )
-from backend.app.schemas import APIIndexResponse, HealthResponse, ReadinessResponse
+from backend.app.schemas import HealthResponse, ReadinessResponse
+from backend.app.request_limits import InferenceBodyLimitMiddleware
+from backend.app.source_content_store import LocalSourceContentStore
 from backend.app.source_documents import (
     MongoSourceDocumentRepository,
     SourceDocumentRepository,
@@ -29,10 +38,45 @@ from backend.app.workflow_api import (
 )
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+
+def cors_origins_for(settings: Settings) -> list[str]:
+    """The UI and API are same-origin; the backend grants no CORS origins."""
+
+    del settings
+    return []
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    if settings.seed_content_on_startup:
+        repository = MongoSourceDocumentRepository(settings)
+        application.state.source_document_repository = repository
+        try:
+            summary = await seed_registered_content(
+                repository,
+                LocalSourceContentStore(settings),
+            )
+            logger.info(
+                "Optional source-content seed completed: seeded=%s already_present=%s skipped=%s errors=%s",
+                summary.seeded,
+                summary.already_present,
+                (
+                    summary.skipped_not_ready
+                    + summary.skipped_size_mismatch
+                    + summary.skipped_invalid_text
+                    + summary.skipped_missing_file
+                ),
+                summary.storage_errors,
+            )
+        except Exception as exc:
+            # Exception messages from drivers can contain connection details.
+            logger.warning(
+                "Optional source-content seed failed safely: error_type=%s",
+                type(exc).__name__,
+            )
     yield
     repository = getattr(application.state, "source_document_repository", None)
     if isinstance(repository, MongoSourceDocumentRepository):
@@ -40,22 +84,30 @@ async def lifespan(application: FastAPI):
     alignment_repository = getattr(application.state, "alignment_job_repository", None)
     if isinstance(alignment_repository, MongoAlignmentJobRepository):
         await alignment_repository.close()
+    interaction_repository = getattr(application.state, "interaction_repository", None)
+    if isinstance(interaction_repository, MongoInteractionRepository):
+        await interaction_repository.close()
 
 
 app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
+app.add_middleware(InferenceBodyLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        origin.strip()
-        for origin in settings.cors_allowed_origins.split(",")
-        if origin.strip()
-    ],
+    allow_origins=cors_origins_for(settings),
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Content-Type"],
 )
 app.include_router(workflow_router)
 app.include_router(inference_router)
+app.include_router(ask_router)
+app.include_router(interaction_router)
+if (FRONTEND_DIST / "assets").is_dir():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=FRONTEND_DIST / "assets"),
+        name="frontend-assets",
+    )
 
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])
@@ -65,11 +117,22 @@ async def health_check() -> HealthResponse:
     return HealthResponse(service=settings.app_name)
 
 
-@app.get("/", response_model=APIIndexResponse, include_in_schema=False)
-async def api_index() -> APIIndexResponse:
-    """Point browser visits at the API docs and health endpoints."""
+@app.get("/", include_in_schema=False)
+async def frontend_index():
+    """Serve the compiled React UI when present, with a helpful local-dev response."""
 
-    return APIIndexResponse(service=settings.app_name)
+    index_path = FRONTEND_DIST / "index.html"
+    if index_path.is_file():
+        return FileResponse(index_path)
+    return HTMLResponse(
+        "<!doctype html><html lang='en'><meta charset='utf-8'>"
+        "<title>FinPilot AI</title><body><h1>FinPilot API is running</h1>"
+        "<p>Build the React client with <code>cd frontend; npm run build</code>, "
+        "or run Vite with <code>npm run dev</code>.</p>"
+        "<p><a href='/docs'>API documentation</a> · <a href='/health'>Health</a></p>"
+        "</body></html>",
+        status_code=200,
+    )
 
 
 @app.get("/ready", response_model=ReadinessResponse, tags=["health"])

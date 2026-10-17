@@ -27,17 +27,25 @@ class Settings(BaseSettings):
     mongodb_database: str = "finpilot"
     mongodb_timeout_ms: int = Field(default=10_000, ge=500, le=60_000)
     source_content_directory: str = "knowledge_bases/source_documents"
+    seed_content_on_startup: bool = False
+    api_rate_limit_requests: int = Field(default=30, ge=1, le=10_000)
+    api_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
 
     # Nugen calls only occur through an explicitly invoked client or script.
     nugen_api_key: SecretStr | None = None
     nugen_api_base_url: str = "https://api.nugen.in"
     nugen_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     nugen_get_retries: int = Field(default=1, ge=0, le=2)
+    ask_expert_timeout_seconds: float = Field(default=45.0, gt=0, le=300)
     nugen_test_model_id: str | None = None
     nugen_tax_model_id: str | None = None
     nugen_investment_model_id: str | None = None
     nugen_insurance_model_id: str | None = None
     nugen_claim_verifier_model_id: str | None = None
+    correction_review_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="FINPILOT_CORRECTION_REVIEW_TOKEN",
+    )
 
     @field_validator("nugen_api_base_url")
     @classmethod

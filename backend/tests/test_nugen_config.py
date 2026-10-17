@@ -18,6 +18,14 @@ def test_nugen_settings_load_environment_key_as_secret(monkeypatch: pytest.Monke
     assert settings.nugen_test_model_id == "fixture-model-id"
 
 
+def test_correction_review_token_is_optional_and_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FINPILOT_CORRECTION_REVIEW_TOKEN", "test-review-token")
+    settings = Settings(_env_file=None)
+    assert settings.correction_review_token is not None
+    assert settings.correction_review_token.get_secret_value() == "test-review-token"
+    assert "test-review-token" not in repr(settings)
+
+
 def test_nugen_base_url_requires_https() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, nugen_api_base_url="http://nugen.test.invalid")
@@ -53,3 +61,13 @@ def test_cors_origins_are_explicit_and_disallow_wildcards() -> None:
         Settings(_env_file=None, cors_allowed_origins="*")
     with pytest.raises(ValidationError):
         Settings(_env_file=None, cors_allowed_origins="http://localhost:5173/path")
+
+
+def test_startup_content_seed_is_optional_and_disabled_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SEED_CONTENT_ON_STARTUP", raising=False)
+    assert Settings(_env_file=None).seed_content_on_startup is False
+
+    monkeypatch.setenv("SEED_CONTENT_ON_STARTUP", "true")
+    assert Settings(_env_file=None).seed_content_on_startup is True

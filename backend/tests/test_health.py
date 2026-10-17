@@ -3,6 +3,7 @@ import pytest
 
 from backend.app.config import Settings, get_settings
 from backend.app.main import app
+from backend.app.main import cors_origins_for
 from backend.app.source_documents import SourceDocumentStoreError
 from backend.app.workflow_api import get_document_repository
 
@@ -32,18 +33,15 @@ async def test_health_endpoint_returns_ok() -> None:
 
 
 @pytest.mark.asyncio
-async def test_api_root_points_to_docs_and_health_routes() -> None:
+async def test_api_root_serves_the_compiled_frontend_or_dev_instructions() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "service": "FinPilot AI API",
-        "docs_path": "/docs",
-        "health_path": "/health",
-        "readiness_path": "/ready",
-    }
+    assert "<html" in response.text.casefold()
+    assert "FinPilot" in response.text
+    assert "src/main.tsx" not in response.text
 
 
 @pytest.mark.asyncio
@@ -110,7 +108,7 @@ async def test_readiness_returns_safe_mongo_failure(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_frontend_origin_is_allowed_for_json_post_preflight() -> None:
+async def test_frontend_origin_is_denied_by_same_origin_cors_policy() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.options(
@@ -122,8 +120,8 @@ async def test_frontend_origin_is_allowed_for_json_post_preflight() -> None:
             },
         )
 
-    assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
     assert "access-control-allow-credentials" not in response.headers
 
 
@@ -141,3 +139,13 @@ async def test_unknown_frontend_origin_is_not_allowed() -> None:
 
     assert response.status_code == 400
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_production_serves_same_origin_without_cross_origin_cors_grants() -> None:
+    settings = Settings(_env_file=None, app_env="production")
+    assert cors_origins_for(settings) == []
+
+
+def test_development_also_uses_same_origin_cors_policy() -> None:
+    settings = Settings(_env_file=None, app_env="development")
+    assert cors_origins_for(settings) == []
