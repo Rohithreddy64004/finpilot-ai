@@ -94,6 +94,7 @@ async def test_post_preflight_is_allowed_for_api_routes(path: str) -> None:
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
     assert "POST" in response.headers["access-control-allow-methods"]
+    assert "OPTIONS" in response.headers["access-control-allow-methods"]
     assert "content-type" in response.headers["access-control-allow-headers"].lower()
 
 

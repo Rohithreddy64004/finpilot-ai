@@ -60,7 +60,7 @@ def add_frontend_cors(application: FastAPI, runtime_settings: Settings) -> None:
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type"],
     )
 
