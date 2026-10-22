@@ -15,14 +15,9 @@ From the repository root, open a PowerShell terminal:
 ```powershell
 Set-Location frontend
 npm ci
-Copy-Item .env.example .env.local
 ```
 
-The frontend environment file contains only this public API origin:
-
-```text
-VITE_API_BASE_URL=http://127.0.0.1:8000
-```
+The frontend uses same-origin API paths, and Vite proxies them to the local backend during development. No frontend environment file is required.
 
 `VITE_*` values are compiled into browser code and are public. Never put Nugen keys, MongoDB credentials, or other secrets in the frontend environment. Keep `NUGEN_API_KEY` and model IDs in the backend `.env`.
 
@@ -76,7 +71,7 @@ The API-service and UI tests mock `fetch`; they do not call Nugen, MongoDB, or t
 
 ## Troubleshooting
 
-- **“Cannot reach the FinPilot backend”**: check that Uvicorn is running and `VITE_API_BASE_URL` points to its origin. Restart Vite after editing `.env.local`.
+- **“Cannot reach the FinPilot backend”**: check that Uvicorn is running and the Vite development server is proxying `/api` requests to it.
 - **CORS preflight failure**: verify the browser origin exactly matches one entry in backend `CORS_ALLOWED_ORIGINS`, then restart FastAPI.
 - **HTTP 422**: the backend rejected the request shape or selected domain; the UI displays FastAPI's validation summary.
 - **HTTP 409/503**: check that the selected domain has active READY sources and a configured inference-ready model in the backend.

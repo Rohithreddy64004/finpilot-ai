@@ -78,7 +78,7 @@ The Vite development server proxies `/api` and `/health` to the API. The product
 
 ## Configuration
 
-Copy `.env.example` to a local `.env` and configure values on your own machine. `.env` is ignored by Git. This README intentionally lists variable names only and contains no configured values:
+Create a local `.env` file in the repository root and configure values on your own machine. `.env` is ignored by Git. This README intentionally lists variable names only and contains no configured values:
 
 - `NUGEN_API_KEY`
 - `NUGEN_API_BASE_URL`

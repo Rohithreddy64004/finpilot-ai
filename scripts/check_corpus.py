@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -28,6 +29,7 @@ def inspect_file(path: Path) -> tuple[int, list[str]]:
 
 
 def main() -> int:
+    argparse.ArgumentParser(description=__doc__).parse_args()
     files = corpus_files()
     if not files:
         print("No committed knowledge-base text files were found.", file=sys.stderr)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 from pathlib import Path
@@ -55,6 +56,7 @@ async def _run() -> int:
 
 
 def main() -> int:
+    argparse.ArgumentParser(description=__doc__).parse_args()
     return asyncio.run(_run())
 
 

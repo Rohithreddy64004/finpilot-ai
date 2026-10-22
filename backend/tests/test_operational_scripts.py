@@ -16,7 +16,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.mark.parametrize(
     "script_name",
-    ["alignment_report.py", "run_eval.py", "seed_content.py"],
+    [
+        "alignment_report.py",
+        "check_corpus.py",
+        "diagnose.py",
+        "register_corpus.py",
+        "run_eval.py",
+        "seed_content.py",
+        "smoke_test.py",
+    ],
 )
 def test_operational_script_help_is_safe_and_runs_from_outside_repo_root(script_name: str) -> None:
     result = subprocess.run(
