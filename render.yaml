@@ -25,5 +25,7 @@ services:
         sync: false
       - key: FINPILOT_CORRECTION_REVIEW_TOKEN
         sync: false
+      - key: NUGEN_TIMEOUT_SECONDS
+        sync: false
       - key: SEED_CONTENT_ON_STARTUP
         sync: false
