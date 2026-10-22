@@ -95,6 +95,7 @@ def _to_retrieved_passage(source: AskSource) -> RetrievedPassage:
         passage_id=source.passage_id,
         document_id=source.document_id,
         document_name=source.document_name,
+        section_heading=source.section_heading,
         excerpt=source.excerpt,
         source=source.source,
         score=0.0,
@@ -134,6 +135,7 @@ def _map_expert_result(
             passage_id=item.passage_id,
             document_id=item.document_id,
             document_name=item.document_name,
+            section_heading=item.section_heading,
             excerpt=item.excerpt,
             source=item.source,
         )
@@ -145,7 +147,10 @@ def _map_expert_result(
         status="complete",
         answer=_remap_citations(response.answer, local_to_global),
         model_id=response.model_id,
+        model_mode=response.model_mode,
         alignment_status=response.alignment_status,
+        answer_state=response.answer_state,
+        repair_retry_used=response.repair_retry_used,
         source_grounding_supported=response.source_grounding_supported,
         source_grounding_note=response.source_grounding_note,
         evidence=mapped_sources,
@@ -163,7 +168,9 @@ def _expert_error(expert: ExpertName, message: str) -> AskExpertResult:
         status="error",
         answer="This expert could not complete the request.",
         model_id=None,
+        model_mode=None,
         source_grounding_supported=False,
+        answer_state="no_passages",
         source_grounding_note="No source-grounded answer was returned.",
         limitations=[message],
         error=message,
@@ -220,6 +227,7 @@ async def _call_expert(
                 content_store=content_store,
                 alignment_repository=alignment_repository,
                 claim_verifier=claim_verifier,
+                retain_evidence_on_provider_error=True,
             ),
             timeout=settings.ask_expert_timeout_seconds,
         )
@@ -306,6 +314,8 @@ async def ask_question(
             routing=routing_payload,
             experts=[],
             final_answer=routing_payload.reason,
+            final_answer_state="no_passages",
+            final_excerpt_source_ids=[],
             sources=[],
             gaps=[],
             latency_ms=AskStageLatency(
@@ -349,7 +359,9 @@ async def ask_question(
     for result in expert_results:
         if result.error:
             gaps.append(result.error)
-        if not result.source_grounding_supported and result.status == "complete":
+        if result.answer_state == "withheld" and result.status == "complete":
+            gaps.append(f"{result.expert.title()}: {result.source_grounding_note}")
+        elif not result.source_grounding_supported and result.status == "complete":
             gaps.append(f"{result.expert.title()}: {result.source_grounding_note}")
         gaps.extend(result.limitations)
     gaps = list(dict.fromkeys(gaps))
@@ -357,7 +369,17 @@ async def ask_question(
     grounded_results = [
         result
         for result in expert_results
-        if result.status == "complete" and result.source_grounding_supported
+        if result.status == "complete"
+        and result.source_grounding_supported
+        and result.answer_state == "validated"
+    ]
+    excerpt_only_experts = {
+        result.expert
+        for result in expert_results
+        if result.answer_state != "validated" or result.status == "error"
+    }
+    final_excerpt_source_ids = [
+        source.citation_id for source in sources if source.expert in excerpt_only_experts
     ]
     synthesis_ms = 0
     final_claims: list[ClaimVerification] = []
@@ -367,11 +389,26 @@ async def ask_question(
     final_grounding = False
     final_grounding_note = "No source-grounded expert output was available."
 
-    if not grounded_results:
-        final_answer = (
-            "The selected experts did not return an answer supported by retrieved source passages. "
-            "Review the expert status and gaps before relying on any information."
+    final_answer_state = "validated"
+
+    def individual_validated_answers() -> str:
+        return "\n\n".join(
+            f"### {result.expert.title()} expert\n{result.answer}"
+            for result in grounded_results
         )
+
+    if not grounded_results:
+        if sources:
+            final_answer = "Source excerpts (no generated summary)"
+            final_answer_state = "withheld"
+            final_excerpt_source_ids = [source.citation_id for source in sources]
+            final_grounding_note = (
+                "Sources were retrieved, but no generated wording passed validation."
+            )
+        else:
+            final_answer = "No supporting passage found."
+            final_answer_state = "no_passages"
+            final_grounding_note = "No supporting source passage was retrieved."
     elif len(grounded_results) == 1:
         selected = grounded_results[0]
         final_answer = selected.answer
@@ -392,13 +429,33 @@ async def ask_question(
                 settings=settings,
             )
             citations_valid, citation_note = _validate_citations(draft, sources)
-            if not citations_valid:
-                final_answer = (
-                    "The synthesized wording was withheld because its citation markers did not "
-                    "all map to expert source passages. Review the individual expert results below."
+            cited_ids = citation_reference_ids(draft)
+            covers_each_expert = all(
+                any(source.citation_id in cited_ids for source in result.evidence)
+                for result in grounded_results
+            )
+            if not citations_valid or not covers_each_expert:
+                final_answer = individual_validated_answers()
+                gaps.append(
+                    citation_note
+                    if not citations_valid
+                    else "Synthesis omitted a validated expert answer; individual answers are shown."
                 )
-                gaps.append(citation_note)
-                final_grounding_note = citation_note
+                final_grounding = True
+                final_grounding_note = (
+                    "Individual validated expert answers are shown because synthesis could not "
+                    "represent every selected expert with valid citations."
+                )
+                final_claims = [
+                    claim
+                    for result in grounded_results
+                    for claim in result.claim_verifications
+                ]
+                final_claim_status = "partially_supported" if final_claims else "not_performed"
+                final_independent = any(
+                    result.independent_verification_performed for result in grounded_results
+                )
+                final_claim_note = "Individual expert claim assessments are attached; the synthesis was not used."
             else:
                 final_claims, final_claim_status, final_independent, final_claim_note = (
                     await _assess_synthesized_answer(
@@ -411,25 +468,30 @@ async def ask_question(
                 if final_claim_status == "contains_contradiction" or final_claim_note.startswith(
                     "The verifier failed or returned malformed output"
                 ):
-                    final_answer = (
-                        "The synthesized wording was withheld because claim verification found a "
-                        "contradiction or could not complete safely. Review the per-expert answers, "
-                        "claim assessments, and evidence below."
+                    final_answer = individual_validated_answers()
+                    final_grounding = True
+                    final_grounding_note = (
+                        "Synthesis was withheld after claim assessment; individual validated expert answers are shown."
                     )
-                    final_grounding_note = "The draft citations mapped, but its claim assessment failed safely."
                     gaps.append(final_claim_note)
+                    final_claims = [
+                        claim
+                        for result in grounded_results
+                        for claim in result.claim_verifications
+                    ]
+                    final_claim_status = "partially_supported" if final_claims else "not_performed"
+                    final_independent = any(
+                        result.independent_verification_performed for result in grounded_results
+                    )
+                    final_claim_note = "Individual expert claim assessments are attached; the synthesis was not used."
                 else:
                     final_answer = draft
                     final_grounding = True
                     final_grounding_note = citation_note
         except Exception:
-            final_answer = "\n\n".join(
-                f"### {result.expert.title()} expert\n{result.answer}"
-                for result in grounded_results
-            )
+            final_answer = individual_validated_answers()
             final_answer += (
-                "\n\nSynthesis was unavailable; the source-grounded individual expert answers "
-                "are shown above."
+                "\n\nSynthesis was unavailable; individual expert answers are shown."
             )
             gaps.append("Synthesis failed; individual expert answers are shown instead.")
             final_grounding = all(result.source_grounding_supported for result in grounded_results)
@@ -447,12 +509,15 @@ async def ask_question(
         synthesis_ms = round((time.perf_counter() - synthesis_started) * 1000)
 
     if final_grounding and not _validate_citations(final_answer, sources)[0]:
-        final_answer = (
-            "The final wording was withheld because at least one citation marker did not map to "
-            "a returned source passage. Review the expert results and evidence below."
-        )
+        final_answer = "Source excerpts (no generated summary)" if sources else "No supporting passage found."
         final_grounding = False
-        final_grounding_note = "Citation validation failed; final wording was withheld."
+        final_answer_state = "withheld" if sources else "no_passages"
+        final_excerpt_source_ids = [source.citation_id for source in sources]
+        final_grounding_note = (
+            "Final answer citations could not be validated; retrieved excerpts are shown."
+            if sources
+            else "No supporting source passage was retrieved."
+        )
         final_claims = []
         final_claim_status = "not_performed"
         final_independent = False
@@ -465,6 +530,8 @@ async def ask_question(
         routing=routing_payload,
         experts=expert_results,
         final_answer=final_answer,
+        final_answer_state=final_answer_state,
+        final_excerpt_source_ids=final_excerpt_source_ids,
         final_answer_source_grounding_supported=final_grounding,
         final_answer_source_grounding_note=final_grounding_note,
         final_answer_claim_verifications=final_claims,

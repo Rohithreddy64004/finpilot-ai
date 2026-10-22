@@ -7,13 +7,17 @@ function answerFixture(domain: Domain = 'investment'): InferenceResponse {
   return {
     domain,
     model_id: 'fixture-base-model',
+    model_mode: 'base_fallback',
     alignment_status: 'unaligned',
     answer: 'Diversification spreads exposure across investments. [S1]',
+    answer_state: 'validated',
+    repair_retry_used: false,
     evidence: [{
       citation_id: 'S1',
       passage_id: 'investment:fixture:1',
       document_id: 'document-fixture',
       document_name: 'SEBI investor guide',
+      section_heading: 'Portfolio diversification',
       excerpt: 'Diversification can reduce the effect of one investment on a portfolio.',
       source: {
         title: 'Investor education guide',
@@ -49,6 +53,7 @@ function askFixture(domain: Domain = 'investment'): AskResponse {
     passage_id: domain + ':fixture:1',
     document_id: 'document-fixture',
     document_name: domain + ' public guide',
+    section_heading: 'General education',
     excerpt: 'Diversification can reduce the effect of one investment on a portfolio.',
     source: {
       title: 'Public education guide',
@@ -70,7 +75,10 @@ function askFixture(domain: Domain = 'investment'): AskResponse {
       status: 'complete',
       answer: 'Diversification spreads exposure across investments. [S1]',
       model_id: 'fixture-base-model',
+      model_mode: 'base_fallback',
       alignment_status: 'unaligned',
+      answer_state: 'validated',
+      repair_retry_used: false,
       source_grounding_supported: true,
       source_grounding_note: 'The answer cites a retrieved passage.',
       evidence: [source],
@@ -82,6 +90,8 @@ function askFixture(domain: Domain = 'investment'): AskResponse {
       error: null,
     }],
     final_answer: 'Diversification spreads exposure across investments. [S1]',
+    final_answer_state: 'validated',
+    final_excerpt_source_ids: [],
     final_answer_source_grounding_supported: true,
     final_answer_source_grounding_note: 'Every citation maps to a retrieved passage.',
     final_answer_claim_verifications: [],
@@ -158,15 +168,15 @@ describe('FinPilot chat interface', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       question: 'What is the difference between saving and investing?',
     })
-    expect(screen.getAllByText('Source passages used').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Validated answer').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Verification unavailable')).toHaveLength(2)
     expect(screen.getByText(/No independent claim verifier is configured/)).toBeTruthy()
     expect(screen.getByText('Base model (not aligned)')).toBeTruthy()
     expect(screen.getByText('fixture-base-model')).toBeTruthy()
-    fireEvent.click(screen.getByText(/Sources & evidence/))
-    expect(screen.getByText(/Diversification can reduce the effect/)).toBeTruthy()
+    fireEvent.click(screen.getAllByText(/Sources & evidence/)[0])
+    expect(screen.getAllByText(/Diversification can reduce the effect/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/SEBI/).length).toBeGreaterThan(0)
-    expect(screen.getByText('Retrieved 2026-10-15')).toBeTruthy()
+    expect(screen.getAllByText('Retrieved 2026-10-15').length).toBeGreaterThan(0)
     const sebiSourceLink = screen.getAllByRole('link').find(
       (link) => link.getAttribute('href') === 'https://example.gov.in/guide',
     )
@@ -475,5 +485,54 @@ describe('FinPilot chat interface', () => {
     expect(screen.getByRole('status').textContent).toBe(
       'Expert timed out. The request timed out after 45 seconds.',
     )
+  })
+
+  it('labels a validated answer distinctly', async () => {
+    const { AskResponsePanel } = await import('./components/AskResponsePanel')
+    render(<AskResponsePanel response={askFixture()} />)
+
+    expect(screen.getAllByText('Validated answer').length).toBeGreaterThan(0)
+    expect(screen.queryByText('No supporting passage found')).toBeNull()
+  })
+
+  it('labels an empty retrieval as no supporting passage found', async () => {
+    const { AskResponsePanel } = await import('./components/AskResponsePanel')
+    const response = askFixture()
+    response.final_answer = 'No supporting passage found.'
+    response.final_answer_state = 'no_passages'
+    response.final_answer_source_grounding_supported = false
+    response.final_answer_source_grounding_note = 'No supporting source passage was retrieved.'
+    response.final_excerpt_source_ids = []
+    response.sources = []
+    response.experts[0].answer_state = 'no_passages'
+    response.experts[0].evidence = []
+
+    render(<AskResponsePanel response={response} />)
+
+    expect(screen.getAllByText('No supporting passage found').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Sources found; summary could not be validated')).toBeNull()
+  })
+
+  it('shows retrieved excerpts prominently when generated wording is withheld and escapes excerpt text', async () => {
+    const { AskResponsePanel } = await import('./components/AskResponsePanel')
+    const response = askFixture('tax')
+    response.final_answer = 'Source excerpts (no generated summary)'
+    response.final_answer_state = 'withheld'
+    response.final_answer_source_grounding_supported = false
+    response.final_answer_source_grounding_note = 'Sources were found, but generated wording did not validate.'
+    response.final_excerpt_source_ids = ['S1']
+    response.sources[0].excerpt = '<script>alert("source")</script>Slab rates apply by band.'
+    response.sources[0].section_heading = 'Individual income-tax slabs'
+
+    const { container } = render(<AskResponsePanel response={response} />)
+
+    expect(screen.getByText('Sources found; summary could not be validated')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Source excerpts (no generated summary)' })).toBeTruthy()
+    expect(screen.getByText('Individual income-tax slabs')).toBeTruthy()
+    expect(container.querySelector('.final-source-excerpt > p')?.textContent).toBe(
+      '<script>alert("source")</script>Slab rates apply by band.',
+    )
+    expect(container.querySelector('script')).toBeNull()
+    expect(screen.getAllByText('Sources & evidence (1)').length).toBeGreaterThan(0)
   })
 })

@@ -8,6 +8,8 @@ from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
 
 ExpertName = Literal["tax", "investment", "insurance"]
 AlignmentStatus = Literal["aligned", "unaligned"]
+ModelMode = Literal["aligned", "base_fallback", "base_fallback_after_validation_failure"]
+AnswerState = Literal["validated", "no_passages", "withheld"]
 ClaimStatus = Literal["supported", "contradicted", "unverified"]
 ClaimAssessmentBasis = Literal[
     "independent_verifier",
@@ -153,6 +155,7 @@ class RetrievedEvidence(BaseModel):
     passage_id: str = Field(min_length=1)
     document_id: str = Field(min_length=1)
     document_name: str = Field(min_length=1)
+    section_heading: str = "Source passage"
     excerpt: str = Field(min_length=1)
     source: SourceReference
 
@@ -177,8 +180,11 @@ class DomainInferenceResponse(BaseModel):
 
     domain: ExpertName
     model_id: str
+    model_mode: ModelMode = "base_fallback"
     alignment_status: AlignmentStatus
     answer: str = Field(min_length=1)
+    answer_state: AnswerState = "validated"
+    repair_retry_used: bool = False
     evidence: list[RetrievedEvidence] = Field(default_factory=list)
     source_references: list[SourceReference] = Field(default_factory=list)
     source_grounding_supported: bool = False
@@ -242,6 +248,7 @@ class AskSource(BaseModel):
     passage_id: str = Field(min_length=1)
     document_id: str = Field(min_length=1)
     document_name: str = Field(min_length=1)
+    section_heading: str = "Source passage"
     excerpt: str = Field(min_length=1)
     source: SourceReference
 
@@ -253,7 +260,10 @@ class AskExpertResult(BaseModel):
     status: Literal["complete", "error"]
     answer: str = Field(min_length=1)
     model_id: str | None = None
+    model_mode: ModelMode | None = None
     alignment_status: AlignmentStatus = "unaligned"
+    answer_state: AnswerState = "no_passages"
+    repair_retry_used: bool = False
     source_grounding_supported: bool = False
     source_grounding_note: str = "No supporting passage was found."
     evidence: list[AskSource] = Field(default_factory=list)
@@ -283,6 +293,8 @@ class AskResponse(BaseModel):
     routing: AskRoutingDecision
     experts: list[AskExpertResult]
     final_answer: str = Field(min_length=1)
+    final_answer_state: AnswerState = "validated"
+    final_excerpt_source_ids: list[str] = Field(default_factory=list)
     final_answer_source_grounding_supported: bool = False
     final_answer_source_grounding_note: str = "No source-grounded final answer was returned."
     final_answer_claim_verifications: list[ClaimVerification] = Field(default_factory=list)

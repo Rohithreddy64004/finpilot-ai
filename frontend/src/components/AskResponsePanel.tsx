@@ -57,9 +57,11 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
                   <StatusBadge tone={expert.status === 'error' ? 'caution' : expert.alignment_status === 'aligned' ? 'positive' : 'neutral'}>
                     {expert.status === 'error'
                       ? 'No model used'
-                      : expert.alignment_status === 'aligned'
+                      : expert.model_mode === 'aligned'
                         ? 'Aligned model'
-                        : 'Base model (not aligned)'}
+                        : expert.model_mode === 'base_fallback_after_validation_failure'
+                          ? 'Base model after citation failure'
+                          : 'Base model (not aligned)'}
                   </StatusBadge>
                   {expert.model_id && <code className="expert-model-id">{expert.model_id}</code>}
                   <ChevronDown className="details-chevron" size={15} />
@@ -70,10 +72,11 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
               ) : (
                 <div className="expert-card-body">
                   <div className="answer-topline">
-                    <StatusBadge tone={expert.source_grounding_supported ? 'teal' : 'caution'}>
-                      {expert.source_grounding_supported ? 'Source passages used' : 'No supporting passage found'}
+                    <StatusBadge tone={expert.answer_state === 'validated' ? 'teal' : 'caution'}>
+                      {answerStateLabel(expert.answer_state)}
                     </StatusBadge>
                     <StatusBadge tone="caution">{verificationLabel(expert.claim_verification_status)}</StatusBadge>
+                    {expert.repair_retry_used && <span className="alignment-note">Citation repair retry used</span>}
                   </div>
                   <MarkdownContent className="answer-copy" text={expert.answer} />
                   {!expert.source_grounding_supported && (
@@ -98,8 +101,8 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
       <section className="answer-section" aria-label="Final answer">
         <h2 className="section-label">FinPilot answer</h2>
         <div className="answer-topline">
-          <StatusBadge tone={response.final_answer_source_grounding_supported ? 'teal' : 'caution'}>
-            {response.final_answer_source_grounding_supported ? 'Source passages used' : 'No supporting passage found'}
+          <StatusBadge tone={response.final_answer_state === 'validated' ? 'teal' : 'caution'}>
+            {answerStateLabel(response.final_answer_state)}
           </StatusBadge>
           <StatusBadge tone={response.final_answer_independent_verification_performed ? 'positive' : 'caution'}>
             {verificationLabel(response.final_answer_claim_verification_status)}
@@ -109,12 +112,18 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
         {!response.final_answer_source_grounding_supported && (
           <p className="answer-note">{response.final_answer_source_grounding_note}</p>
         )}
+        {response.final_excerpt_source_ids.length > 0 && (
+          <FinalSourceExcerpts
+            sources={response.sources.filter((source) => response.final_excerpt_source_ids.includes(source.citation_id))}
+            allGeneratedWordingWithheld={response.final_answer_state === 'withheld'}
+          />
+        )}
         <p className="verification-origin">
           {response.final_answer_independent_verification_performed
             ? 'A separate configured verifier assessed claims against cited passages; this is not authoritative review.'
             : response.final_answer_claim_verification_note || 'No independent verifier ran; claims remain unverified.'}
         </p>
-        <EvidencePanel claims={finalClaims} />
+        <EvidencePanel evidence={response.sources} claims={finalClaims} />
       </section>
 
       {response.gaps.length > 0 && (
@@ -145,6 +154,56 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
       <p className="disclaimer">Educational information only. This is not personalized or licensed financial advice.</p>
     </div>
   )
+}
+
+function answerStateLabel(state: AskResponse['final_answer_state']): string {
+  if (state === 'validated') return 'Validated answer'
+  if (state === 'withheld') return 'Sources found; summary could not be validated'
+  return 'No supporting passage found'
+}
+
+function FinalSourceExcerpts({
+  sources,
+  allGeneratedWordingWithheld,
+}: {
+  sources: AskResponse['sources']
+  allGeneratedWordingWithheld: boolean
+}) {
+  if (sources.length === 0) return null
+  return (
+    <section className="final-source-excerpts" aria-label="Retrieved source excerpts">
+      <h3>{allGeneratedWordingWithheld
+        ? 'Source excerpts (no generated summary)'
+        : 'Source excerpts from experts without a validated answer'}</h3>
+      {sources.map((source) => (
+        <article className="final-source-excerpt" key={source.citation_id}>
+          <div className="final-source-heading">
+            <strong>{source.source.title}</strong>
+            <span>{source.section_heading}</span>
+          </div>
+          <p>{source.excerpt}</p>
+          <div className="final-source-meta">
+            <span>{source.source.accessed_on ? `Retrieved ${source.source.accessed_on}` : 'Retrieved date unavailable'}</span>
+            <SafeSourceUrl url={source.source.url ?? null} />
+          </div>
+        </article>
+      ))}
+    </section>
+  )
+}
+
+function SafeSourceUrl({ url }: { url: string | null }) {
+  if (!url) return <span>URL unavailable</span>
+  let safeUrl: URL
+  try {
+    safeUrl = new URL(url)
+  } catch {
+    return <span>URL unavailable</span>
+  }
+  if ((safeUrl.protocol !== 'https:' && safeUrl.protocol !== 'http:') || safeUrl.username || safeUrl.password) {
+    return <span>URL unavailable</span>
+  }
+  return <a href={safeUrl.href} target="_blank" rel="noopener noreferrer">{safeUrl.href}</a>
 }
 
 function verificationLabel(status: AskResponse['final_answer_claim_verification_status']): string {

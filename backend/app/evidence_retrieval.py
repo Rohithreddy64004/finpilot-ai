@@ -92,6 +92,7 @@ class RetrievedPassage:
     excerpt: str
     source: SourceReference
     score: float
+    section_heading: str = "Source passage"
 
 
 def _tokens(text: str) -> list[str]:
@@ -314,8 +315,8 @@ def _contains_tax_slab_details(excerpt: str) -> bool:
 def _rank_passages(
     domain: ExpertName,
     question: str,
-    candidates: list[tuple[SourceDocumentRecord, int, str, SourceReference]],
-) -> list[tuple[float, tuple[SourceDocumentRecord, int, str, SourceReference]]]:
+    candidates: list[tuple[SourceDocumentRecord, int, str, SourceReference, str]],
+) -> list[tuple[float, tuple[SourceDocumentRecord, int, str, SourceReference, str]]]:
     """Rank lexical matches and promote source passages with direct slab data.
 
     FinPilot currently has no configured embedding index. For tax-slab queries,
@@ -334,7 +335,9 @@ def _rank_passages(
     base_max = max(base_scores, default=0.0) or 1.0
     expanded_max = max(expanded_scores, default=0.0) or 1.0
 
-    ranked: list[tuple[float, tuple[SourceDocumentRecord, int, str, SourceReference]]] = []
+    ranked: list[
+        tuple[float, tuple[SourceDocumentRecord, int, str, SourceReference, str]]
+    ] = []
     for index, candidate in enumerate(candidates):
         score = base_scores[index]
         if slab_query:
@@ -426,7 +429,7 @@ async def retrieve_domain_passages(
     """
 
     root = corpus_root or _ROOT
-    candidates: list[tuple[SourceDocumentRecord, int, str, SourceReference]] = []
+    candidates: list[tuple[SourceDocumentRecord, int, str, SourceReference, str]] = []
     if any(record.domain != domain for record in documents):
         raise SourceContentUnavailableError(
             "The selected source set contains a document from another expert domain."
@@ -453,18 +456,19 @@ async def retrieve_domain_passages(
         for section in _sections(text):
             if _is_instruction_heading(section):
                 continue
+            section_heading = section.splitlines()[0].strip()
             source_reference = _section_source_reference(section, domain, fallback_reference)
             section_passages = _split_section_passages(_without_source_fields(section))
             for excerpt in section_passages:
                 if _tokens(excerpt):
                     passage_index += 1
-                    candidates.append((record, passage_index, excerpt, source_reference))
+                    candidates.append((record, passage_index, excerpt, source_reference, section_heading))
 
     ranked = _rank_passages(domain, question, candidates)
 
     selected: list[RetrievedPassage] = []
     used_characters = 0
-    for score, (record, passage_index, excerpt, source_reference) in ranked:
+    for score, (record, passage_index, excerpt, source_reference, section_heading) in ranked:
         if len(selected) >= top_k:
             break
         if selected and used_characters + len(excerpt) > max_context_chars:
@@ -476,6 +480,7 @@ async def retrieve_domain_passages(
                 passage_id=f"{record.document_id}:{passage_index}",
                 document_id=record.document_id,
                 document_name=record.document_name,
+                section_heading=section_heading,
                 excerpt=excerpt,
                 source=source_reference,
                 score=score,

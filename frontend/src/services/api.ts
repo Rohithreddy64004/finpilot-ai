@@ -3,12 +3,14 @@ import type {
   AskRequest,
   AskResponse,
   AskSource,
+  AnswerState,
   ClaimVerification,
   ClaimVerificationSummaryStatus,
   Domain,
   FeedbackResponse,
   InferenceRequest,
   InferenceResponse,
+  ModelMode,
   RetrievedEvidence,
   SourceHealthResponse,
   SourceReference,
@@ -70,9 +72,24 @@ function parseEvidence(value: unknown): RetrievedEvidence {
     passage_id: requireString(value, 'passage_id'),
     document_id: requireString(value, 'document_id'),
     document_name: requireString(value, 'document_name'),
+    section_heading: requireString(value, 'section_heading'),
     excerpt: requireString(value, 'excerpt'),
     source: parseSourceReference(value.source),
   }
+}
+
+function parseAnswerState(value: unknown): AnswerState {
+  if (value !== 'validated' && value !== 'no_passages' && value !== 'withheld') {
+    throw new ApiError('The backend returned an unknown answer state.')
+  }
+  return value
+}
+
+function parseModelMode(value: unknown): ModelMode {
+  if (value !== 'aligned' && value !== 'base_fallback' && value !== 'base_fallback_after_validation_failure') {
+    throw new ApiError('The backend returned an unknown model mode.')
+  }
+  return value
 }
 
 function parseClaim(value: unknown): ClaimVerification {
@@ -125,6 +142,11 @@ export function parseInferenceResponse(value: unknown, expectedDomain: Domain): 
   const alignmentStatus = value.alignment_status
   if (alignmentStatus !== 'aligned' && alignmentStatus !== 'unaligned') {
     throw new ApiError('The backend returned an unknown model alignment status.')
+  }
+  const modelMode = parseModelMode(value.model_mode)
+  const answerState = parseAnswerState(value.answer_state)
+  if (typeof value.repair_retry_used !== 'boolean') {
+    throw new ApiError('The backend returned an invalid citation repair retry status.')
   }
   const parseArray = <T>(key: string, parseItem: (item: unknown) => T): T[] | undefined => {
     const items = value[key]
@@ -205,8 +227,11 @@ export function parseInferenceResponse(value: unknown, expectedDomain: Domain): 
   return {
     domain: expectedDomain,
     model_id: requireString(value, 'model_id'),
+    model_mode: modelMode,
     alignment_status: alignmentStatus,
     answer: requireString(value, 'answer'),
+    answer_state: answerState,
+    repair_retry_used: value.repair_retry_used,
     evidence,
     source_references: references,
     source_grounding_supported: grounded ?? undefined,
@@ -323,6 +348,13 @@ function parseAskExpert(value: unknown): AskExpertResult {
   }
   const status = value.status
   const alignment = value.alignment_status
+  const answerState = parseAnswerState(value.answer_state)
+  const modelMode = status === 'error' && value.model_mode === null
+    ? null
+    : parseModelMode(value.model_mode)
+  if (typeof value.repair_retry_used !== 'boolean') {
+    throw new ApiError('The backend returned an invalid expert citation repair retry status.')
+  }
   const grounded = value.source_grounding_supported
   const independent = value.independent_verification_performed
   if (status !== 'complete' && status !== 'error') throw new ApiError('The backend returned an invalid expert state.')
@@ -351,7 +383,8 @@ function parseAskExpert(value: unknown): AskExpertResult {
     : optionalString(value, 'model_id') ?? null
   const answerMarkers = [...answer.matchAll(/\[S[^\]\r\n]*\]/g)].map((match) => match[0])
   const answerIds = answerMarkers.map((marker) => /^\[(S\d+)\]$/.exec(marker)?.[1])
-  if (answerIds.some((id) => !id || !knownIds.has(id)) || (grounded && answerIds.length === 0)) {
+  if (answerIds.some((id) => !id || !knownIds.has(id)) ||
+      (grounded && answerState === 'validated' && answerIds.length === 0)) {
     throw new ApiError('The backend returned an expert answer with invalid source markers.')
   }
   if (independent && !claims.some((claim) => claim.assessment_basis === 'independent_verifier')) {
@@ -362,7 +395,10 @@ function parseAskExpert(value: unknown): AskExpertResult {
     status,
     answer,
     model_id: modelId,
+    model_mode: modelMode,
     alignment_status: alignment,
+    answer_state: answerState,
+    repair_retry_used: value.repair_retry_used,
     source_grounding_supported: grounded,
     source_grounding_note: optionalString(value, 'source_grounding_note') ?? '',
     evidence,
@@ -417,6 +453,12 @@ export function parseAskResponse(value: unknown): AskResponse {
     throw new ApiError('The backend returned duplicate source citation IDs.')
   }
   const knownIds = new Set(sourceIds)
+  const finalAnswerState = parseAnswerState(value.final_answer_state)
+  const finalExcerptSourceIds = parseStringList(value.final_excerpt_source_ids, 'final excerpt source ID')
+  if (new Set(finalExcerptSourceIds).size !== finalExcerptSourceIds.length ||
+      finalExcerptSourceIds.some((id) => !knownIds.has(id))) {
+    throw new ApiError('The backend returned an invalid final source excerpt reference.')
+  }
   const sourceById = new Map(sources.map((source) => [source.citation_id, source]))
   for (const expert of experts) {
     for (const evidence of expert.evidence) {
@@ -442,7 +484,8 @@ export function parseAskResponse(value: unknown): AskResponse {
   }
   const citationLike = [...finalAnswer.matchAll(/\[S[^\]\r\n]*\]/g)].map((match) => match[0])
   const finalIds = citationLike.map((marker) => /^\[(S\d+)\]$/.exec(marker)?.[1])
-  if (finalIds.some((id) => !id || !knownIds.has(id)) || (grounded && finalIds.length === 0)) {
+  if (finalIds.some((id) => !id || !knownIds.has(id)) ||
+      (grounded && finalAnswerState === 'validated' && finalIds.length === 0)) {
     throw new ApiError('The backend returned a final answer with invalid source markers.')
   }
   const perExpert = value.latency_ms.per_expert_ms
@@ -464,6 +507,8 @@ export function parseAskResponse(value: unknown): AskResponse {
     },
     experts,
     final_answer: finalAnswer,
+    final_answer_state: finalAnswerState,
+    final_excerpt_source_ids: finalExcerptSourceIds,
     final_answer_source_grounding_supported: grounded,
     final_answer_source_grounding_note: optionalString(value, 'final_answer_source_grounding_note') ?? '',
     final_answer_claim_verifications: claims,

@@ -14,13 +14,17 @@ function responseFixture(domain: Domain = 'tax'): InferenceResponse {
   return {
     domain,
     model_id: 'fixture-base-model',
+    model_mode: 'base_fallback',
     alignment_status: 'unaligned',
     answer: 'A deduction reduces taxable income. [S1]',
+    answer_state: 'validated',
+    repair_retry_used: false,
     evidence: [{
       citation_id: 'S1',
       passage_id: 'tax:document-fixture:1',
       document_id: 'document-fixture',
       document_name: 'Tax guide',
+      section_heading: 'Tax deductions',
       excerpt: 'A deduction reduces taxable income.',
       source: {
         title: 'Income Tax Department guide',
@@ -57,6 +61,7 @@ function askResponseFixture(): AskResponse {
     passage_id: 'tax:passage:1',
     document_id: 'tax-document',
     document_name: 'Tax guide',
+    section_heading: 'Tax regimes',
     excerpt: 'Taxable income is assessed under the applicable regime.',
     source: { title: 'Income Tax Department', url: 'https://www.incometax.gov.in/' },
   }
@@ -69,7 +74,10 @@ function askResponseFixture(): AskResponse {
       status: 'complete',
       answer: 'Taxable income is assessed under the applicable regime. [S1]',
       model_id: 'fixture-base-model',
+      model_mode: 'base_fallback',
       alignment_status: 'unaligned',
+      answer_state: 'validated',
+      repair_retry_used: false,
       source_grounding_supported: true,
       source_grounding_note: 'The citation maps to a retrieved passage.',
       evidence: [source],
@@ -81,6 +89,8 @@ function askResponseFixture(): AskResponse {
       error: null,
     }],
     final_answer: 'Taxable income is assessed under the applicable regime. [S1]',
+    final_answer_state: 'validated',
+    final_excerpt_source_ids: [],
     final_answer_source_grounding_supported: true,
     final_answer_source_grounding_note: 'The citation maps to a retrieved passage.',
     final_answer_claim_verifications: [],
@@ -213,6 +223,7 @@ describe('multi-expert API', () => {
     const fixture = askResponseFixture()
     fixture.experts[0].status = 'error'
     fixture.experts[0].model_id = null
+    fixture.experts[0].model_mode = null
     fixture.experts[0].error = 'No model was selected.'
 
     expect(parseAskResponse(fixture).experts[0].model_id).toBeNull()
@@ -274,6 +285,18 @@ describe('multi-expert API', () => {
     expect(() => parseAskResponse(fixture)).toThrow(/expert answer with invalid source markers/)
   })
 
+  it('accepts a withheld expert summary with its retrieved source excerpts', () => {
+    const fixture = askResponseFixture()
+    fixture.experts[0].answer = 'Generated wording was withheld.'
+    fixture.experts[0].answer_state = 'withheld'
+    fixture.final_answer = 'Source excerpts (no generated summary)'
+    fixture.final_answer_state = 'withheld'
+    fixture.final_answer_source_grounding_supported = false
+    fixture.final_excerpt_source_ids = ['S1']
+
+    expect(parseAskResponse(fixture).final_excerpt_source_ids).toEqual(['S1'])
+  })
+
   it('posts feedback against the saved query identifier', async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockedResponse({
       id: 'feedback-1',
@@ -295,8 +318,11 @@ describe('parseInferenceResponse', () => {
     const payload = {
       domain: 'tax',
       model_id: 'fixture-base-model',
+      model_mode: 'base_fallback',
       alignment_status: 'unaligned',
       answer: 'General educational answer.',
+      answer_state: 'validated',
+      repair_retry_used: false,
     }
 
     expect(parseInferenceResponse(payload, 'tax')).toMatchObject({

@@ -121,6 +121,14 @@
 .badge-neutral { border-color: rgba(127,153,176,.2); color: #aabbd0; background: rgba(119,146,170,.09); }
 .badge-teal { border-color: rgba(94,234,212,.22); color: #99e7db; background: rgba(94,234,212,.08); font-family: var(--mono); }
 .answer-section { margin-top: 5px; }
+.final-source-excerpts { margin-top: 14px; padding: 12px; border: 1px solid rgba(231,185,105,.32); border-radius: 9px; background: rgba(176,127,48,.08); }
+.final-source-excerpts h3 { margin: 0 0 9px; color: #f0d69e; font-size: 13px; line-height: 1.4; }
+.final-source-excerpt { padding: 10px 0; border-top: 1px solid rgba(231,185,105,.16); }
+.final-source-heading { display: grid; gap: 4px; color: #dbe5ee; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.final-source-heading span { color: #aebdca; font-weight: 550; }
+.final-source-excerpt > p { margin: 8px 0; color: #f0f4f8; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; white-space: pre-wrap; }
+.final-source-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; color: #b5c3d0; font-size: 10px; overflow-wrap: anywhere; }
+.final-source-meta a { color: #a9dfd6; text-decoration: underline; text-underline-offset: 2px; }
 .answer-section > .section-label { margin: 0 0 5px; color: #b9c9d7; font-size: 10px; }
 .answer-copy { color: #d6e0e9; font-size: 12px; line-height: 1.75; overflow-wrap: anywhere; }
 .answer-copy > :first-child, .evidence-excerpt > :first-child, .claim-copy > :first-child { margin-top: 0; }
@@ -358,6 +366,14 @@
 .badge-neutral { border-color: #d5deea; color: #4f617b; background: #f3f6fa; }
 .badge-teal { border-color: #bfd3f0; color: #23599e; background: #edf4ff; }
 .section-label, .answer-section > .section-label { color: #334761; font-size: 13px; }
+.final-source-excerpts { border-color: #d3b572; background: #fff9e9; }
+.final-source-excerpts h3 { color: #654b13; }
+.final-source-excerpt { border-color: #eadcb9; }
+.final-source-heading { color: #263a55; }
+.final-source-heading span { color: #415873; }
+.final-source-excerpt > p { color: #1e2e44; }
+.final-source-meta { color: #415873; }
+.final-source-meta a { color: #214f89; }
 .section-label svg, .evidence-details summary svg:first-child { color: #2865bd; }
 .answer-copy { color: #253750; font-size: 14px; }
 .answer-copy h1, .answer-copy h2, .answer-copy h3, .answer-copy h4, .answer-copy h5, .answer-copy h6 { color: #1d304d; }

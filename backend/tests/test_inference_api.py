@@ -177,7 +177,9 @@ class FakeNugenClient:
         self.deployment_statuses: dict[str, DeploymentStatusResponse] = {}
         self.completion_error: Exception | None = None
         self.completion_text = "A cautious educational explanation. [S1]"
+        self.completion_queue: list[str] = []
         self.completion_request: Any = None
+        self.completion_requests: list[Any] = []
         self.completion_calls = 0
 
     async def get_document_status(self, document_id: str) -> DocumentStatusResponse:
@@ -220,8 +222,10 @@ class FakeNugenClient:
     async def chat_completions(self, request: Any) -> ChatCompletionResponse:
         self.completion_calls += 1
         self.completion_request = request
+        self.completion_requests.append(request)
         if self.completion_error is not None:
             raise self.completion_error
+        content = self.completion_queue.pop(0) if self.completion_queue else self.completion_text
         return ChatCompletionResponse(
             id="fixture-completion",
             object="chat.completion",
@@ -232,7 +236,7 @@ class FakeNugenClient:
                     index=0,
                     message=CompletionMessage(
                         role="assistant",
-                        content=self.completion_text,
+                        content=content,
                     ),
                     finish_reason="stop",
                 )
@@ -389,6 +393,7 @@ async def test_inference_uses_selected_domain_and_returns_passage_grounding(
     }
     assert focus_phrases[domain] in system_message
     assert "Use only the supplied source passages" in system_message
+    assert "Every sentence and every list item must end with its own exact passage marker" in system_message
     assert "standard Markdown" in system_message
     assert "Do not repeat generic education or professional-advice disclaimers" in system_message
     assert "Never invent a marker" in system_message
@@ -396,6 +401,10 @@ async def test_inference_uses_selected_domain_and_returns_passage_grounding(
     for other_domain in {"tax", "investment", "insurance"} - {domain}:
         assert f"Document ID: {other_domain}-source" not in system_message
     assert nugen.completion_request.messages[1].content == questions[domain]
+    assert nugen.completion_request.temperature == 0.1
+    assert "Numbered source passages" in system_message
+    assert nugen.completion_request.messages[0].role == "system"
+    assert nugen.completion_request.messages[1].role == "user"
 
 
 @pytest.mark.asyncio
@@ -536,6 +545,7 @@ async def test_empty_retrieval_returns_ungrounded_safe_answer_without_calling_mo
     assert response.status_code == 200
     assert response.json()["source_grounding_supported"] is False
     assert response.json()["source_references"] == []
+    assert response.json()["answer_state"] == "no_passages"
     assert "couldn't find relevant information" in response.json()["answer"]
     assert nugen.completion_calls == 0
 
@@ -569,6 +579,7 @@ async def test_tax_slab_query_with_generic_passage_withholds_inference() -> None
     assert payload["source_grounding_supported"] is False
     assert payload["claim_verification_status"] == "not_performed"
     assert "do not contain both usable income thresholds and slab rates" in payload["answer"]
+    assert payload["answer_state"] == "withheld"
     assert "₹" not in payload["answer"]
     assert "%" not in payload["answer"]
     assert nugen.completion_calls == 0
@@ -605,6 +616,36 @@ async def test_tax_slab_draft_with_unsupported_numeric_values_is_withheld() -> N
     assert nugen.completion_request.messages[1].content == (
         "How do income tax slabs work for individuals?"
     )
+
+
+@pytest.mark.asyncio
+async def test_uncited_tax_slab_response_retains_all_ranked_slab_excerpts() -> None:
+    nugen = FakeNugenClient()
+    nugen.completion_queue = [
+        "An answer without a citation.",
+        "The repair still has no valid citation.",
+    ]
+    setup_dependencies(
+        client=nugen,
+        repository=MemoryDocumentRepository([source_record("tax", "tax-source")]),
+    )
+
+    async with await make_client() as client:
+        response = await client.post(
+            "/api/inference",
+            json={"domain": "tax", "question": "How do income tax slabs work for individuals?"},
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["answer_state"] == "withheld"
+    assert payload["repair_retry_used"] is True
+    assert payload["source_grounding_supported"] is False
+    assert [item["citation_id"] for item in payload["evidence"]] == [
+        "S1", "S2", "S3", "S4", "S5",
+    ]
+    assert all(item["section_heading"] for item in payload["evidence"])
+    assert "An answer without a citation" not in payload["answer"]
 
 
 @pytest.mark.asyncio
@@ -745,7 +786,7 @@ async def test_unsupported_model_output_is_withheld(
     payload = response.json()
     assert payload["source_grounding_supported"] is False
     assert completion_text.split(" [S9]")[0] not in payload["answer"]
-    assert "verifiable citations" in payload["answer"]
+    assert "could not be validated" in payload["answer"]
     assert payload["evidence"][0]["source"]["url"].startswith(
         "https://investor.sebi.gov.in/"
     )
@@ -788,6 +829,129 @@ async def test_citation_failure_notes_distinguish_missing_malformed_and_unknown(
     assert expected_note in payload["source_grounding_note"]
     assert completion_text not in payload["source_grounding_note"]
     assert completion_text not in payload["answer"]
+    assert payload["answer_state"] == "withheld"
+    assert payload["repair_retry_used"] is True
+    assert payload["evidence"]
+    assert nugen.completion_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_uncited_first_response_is_repaired_once_and_cited_answer_is_used() -> None:
+    nugen = FakeNugenClient()
+    nugen.completion_queue = [
+        "A cautious answer without a marker.",
+        "A cautious answer grounded in the passage. [S1]",
+    ]
+    setup_dependencies(
+        client=nugen,
+        repository=MemoryDocumentRepository([source_record("investment", "investment-source")]),
+    )
+
+    async with await make_client() as client:
+        response = await client.post(
+            "/api/inference",
+            json={"domain": "investment", "question": "What is an SIP?"},
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["answer"] == "A cautious answer grounded in the passage. [S1]"
+    assert payload["answer_state"] == "validated"
+    assert payload["repair_retry_used"] is True
+    assert payload["model_mode"] == "base_fallback"
+    assert nugen.completion_calls == 2
+    assert all(item.temperature == 0.1 for item in nugen.completion_requests)
+    assert "Repair the answer using only the numbered source passages" in nugen.completion_requests[1].messages[0].content
+    assert "Passage:" in nugen.completion_requests[1].messages[0].content
+    assert nugen.completion_requests[1].messages[1].content == "What is an SIP?"
+
+
+@pytest.mark.asyncio
+async def test_aligned_citation_failure_retries_with_verified_base_model() -> None:
+    nugen = FakeNugenClient()
+    nugen.completion_queue = [
+        "Aligned answer without a marker.",
+        "Aligned repair still has no marker.",
+        "Progressive rates apply to separate income bands. [S1]",
+    ]
+    nugen.aligned_model_rows = [
+        AlignedModelSummary(
+            model_id="fixture-aligned-tax",
+            model_name="Fixture aligned tax model",
+            deployment_status="DEPLOYED",
+            base_model_id="fixture-base-model",
+            alignment_id="fixture-alignment",
+            created_at="2026-10-15T00:00:00Z",
+        )
+    ]
+    nugen.alignment_statuses["fixture-alignment"] = AlignmentStatusResponse(
+        alignment_id="fixture-alignment",
+        status="READY",
+    )
+    nugen.deployment_statuses["fixture-aligned-tax"] = DeploymentStatusResponse(
+        model_id="fixture-aligned-tax",
+        status="DEPLOYED",
+    )
+    alignment_repository = MemoryAlignmentJobRepository(
+        [
+            AlignmentJobRecord(
+                tracking_id="fixture-tracking",
+                domain="tax",
+                alignment_name="Fixture tax model",
+                base_model_id="fixture-base-model",
+                document_ids=["tax-source"],
+                alignment_id="fixture-alignment",
+                submission_state="SUBMITTED",
+                provider_status="READY",
+                model_id="fixture-aligned-tax",
+                listed_deployment_status="DEPLOYED",
+                deployment_status="DEPLOYED",
+                alignment_status="aligned",
+                verification_state="VERIFIED",
+                inference_ready=True,
+                status_note="Provider verified in test fixture.",
+                created_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
+            )
+        ]
+    )
+    settings = Settings(
+        _env_file=None,
+        nugen_api_key="fixture-secret",
+        nugen_tax_model_id="fixture-aligned-tax",
+        nugen_test_model_id="fixture-base-model",
+    )
+    setup_dependencies(
+        client=nugen,
+        repository=MemoryDocumentRepository([source_record("tax", "tax-source")]),
+        settings=settings,
+        alignment_repository=alignment_repository,
+    )
+
+    async with await make_client() as client:
+        response = await client.post(
+            "/api/inference",
+            json={
+                "domain": "tax",
+                "question": "How do income tax slabs work for individuals?",
+                "model_id": "fixture-aligned-tax",
+            },
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["model_id"] == "fixture-base-model"
+    assert payload["model_mode"] == "base_fallback_after_validation_failure"
+    assert payload["alignment_status"] == "unaligned"
+    assert payload["answer_state"] == "validated"
+    assert payload["answer"] == "Progressive rates apply to separate income bands. [S1]"
+    assert payload["repair_retry_used"] is True
+    assert any("aligned expert's output failed citation validation" in item for item in payload["limitations"])
+    assert [item.model for item in nugen.completion_requests] == [
+        "fixture-aligned-tax",
+        "fixture-aligned-tax",
+        "fixture-base-model",
+    ]
 
 
 @pytest.mark.asyncio

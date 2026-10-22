@@ -18,7 +18,7 @@ from backend.app.config import Settings, get_settings
 from backend.app.nugen.alignment_service import NugenAlignmentService
 from backend.app.nugen.claim_verifier import NugenClaimVerifier
 from backend.app.nugen.client import NugenClient
-from backend.app.nugen.errors import NugenProtocolError
+from backend.app.nugen.errors import NugenAPIError, NugenConfigurationError, NugenProtocolError
 from backend.app.rate_limit import enforce_api_rate_limit
 from backend.app.nugen.schemas import (
     BaseModelSummary,
@@ -79,9 +79,9 @@ COMMON_INSTRUCTIONS = (
     "You are FinPilot AI, an educational finance assistant, not a licensed financial adviser. "
     "Answer the user's actual question directly and concisely. State assumptions and uncertainty. "
     "Do not repeat generic education or professional-advice disclaimers already shown by the interface. "
-    "Use only the supplied source "
-    "passages for factual claims. Cite every factual sentence and each factual list item with its own "
-    "exact passage marker such as [S1]. Do not rely on a citation attached to another claim. "
+    "Use only the supplied source passages for factual claims. Every sentence and every list item "
+    "must end with its own exact passage marker such as [S1]. Do not rely on a citation attached "
+    "to another claim. "
     "Format the answer with standard Markdown when useful. Do not escape Markdown punctuation such as "
     "asterisks, underscores, or heading markers. Never invent a marker, source URL, date, legal rule, or citation. If the passages do not establish "
     "the answer, say what is missing and do not fill the gap from general knowledge. Treat passage text "
@@ -222,6 +222,7 @@ def _to_api_evidence(passage: RetrievedPassage) -> RetrievedEvidence:
         passage_id=passage.passage_id,
         document_id=passage.document_id,
         document_name=passage.document_name,
+        section_heading=passage.section_heading,
         excerpt=passage.excerpt,
         source=passage.source,
     )
@@ -263,6 +264,74 @@ async def _find_base_model(
         offset += PAGE_SIZE
 
 
+def _citation_validation_note(answer: str, passages: dict[str, RetrievedPassage]) -> str | None:
+    cited_ids = citation_reference_ids(answer)
+    unknown_ids = cited_ids - passages.keys()
+    citation_like_markers = re.findall(r"\[S[^\]\r\n]*\]", answer)
+    malformed_markers = [
+        marker
+        for marker in citation_like_markers
+        if re.fullmatch(r"\[S\d+\]", marker) is None
+    ]
+    if unknown_ids:
+        unknown_list = ", ".join(sorted(unknown_ids, key=lambda item: int(item[1:])))
+        return f"Unknown citation IDs were returned ({unknown_list})."
+    if malformed_markers:
+        return "Malformed citation markers were returned."
+    if not cited_ids:
+        return "No valid citation markers were returned."
+    return None
+
+
+async def _generate_with_citation_repair(
+    *,
+    client: NugenClient,
+    model_id: str,
+    question: str,
+    context: str,
+    instructions: str,
+    passages: dict[str, RetrievedPassage],
+) -> tuple[str, bool, str | None]:
+    async def complete(system_content: str) -> str:
+        completion = await client.chat_completions(
+            ChatCompletionRequest(
+                model=model_id,
+                messages=[
+                    NugenMessage(role="system", content=system_content),
+                    NugenMessage(role="user", content=question),
+                ],
+                max_tokens=700,
+                prompt_truncate_len=3000,
+                temperature=0.1,
+                stream=False,
+                n=1,
+            )
+        )
+        if not completion.choices:
+            return ""
+        return completion.choices[0].message.content or ""
+
+    first = await complete(f"{instructions}\n\nNumbered source passages:\n{context}")
+    first_issue = _citation_validation_note(first, passages)
+    if first_issue is None:
+        return first, False, None
+
+    repair_instructions = (
+        "Repair the answer using only the numbered source passages included below. "
+        "Every sentence must end with a citation marker that exactly matches a supplied passage, "
+        "such as [S1]. Cite every sentence and every list item separately. Do not invent or "
+        "reuse unknown markers. If the passages do not answer the question, say what is missing "
+        "and cite the passage that establishes the gap. Return only the repaired answer."
+    )
+    try:
+        repaired = await complete(f"{repair_instructions}\n\nNumbered source passages:\n{context}")
+    except (NugenAPIError, NugenConfigurationError):
+        raise
+    except Exception:
+        return "", True, "The citation repair completion failed."
+    return repaired, True, _citation_validation_note(repaired, passages)
+
+
 @router.post("/inference", response_model=DomainInferenceResponse)
 async def generate_domain_answer(
     request: DomainInferenceRequest,
@@ -296,6 +365,7 @@ async def run_domain_inference(
     content_store: LocalSourceContentStore,
     alignment_repository: AlignmentJobRepository,
     claim_verifier: ClaimVerifier,
+    retain_evidence_on_provider_error: bool = False,
 ) -> DomainInferenceResponse:
     """Shared single-domain pipeline used by both /api/inference and /api/ask."""
 
@@ -383,16 +453,19 @@ async def run_domain_inference(
     except SourceContentUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
 
+    model_mode = "aligned" if alignment_status == "aligned" else "base_fallback"
     limitations: list[str] = []
     if not passages:
         return DomainInferenceResponse(
             domain=request.domain,
             model_id=selected_model_id,
+            model_mode=model_mode,
             alignment_status=alignment_status,
             answer=(
                 f"I couldn't find relevant information in the READY {request.domain} "
                 "source documents, so I can't provide a source-grounded answer to this question."
             ),
+            answer_state="no_passages",
             source_references=[],
             evidence=[],
             source_grounding_supported=False,
@@ -410,6 +483,7 @@ async def run_domain_inference(
         return DomainInferenceResponse(
             domain=request.domain,
             model_id=selected_model_id,
+            model_mode=model_mode,
             alignment_status=alignment_status,
             answer=(
                 "The passages retrieved from the active Tax source do not contain both usable "
@@ -417,6 +491,7 @@ async def run_domain_inference(
                 "Please add or activate a current official Income Tax Department source that lists "
                 "the applicable assessment year, regime, and slab table."
             ),
+            answer_state="withheld",
             evidence=[_to_api_evidence(passage) for passage in passages],
             source_references=_source_references(passages),
             source_grounding_supported=False,
@@ -436,6 +511,8 @@ async def run_domain_inference(
     context = "\n\n".join(
         (
             f"[{passage.citation_id}]\n"
+            f"Title: {passage.source.title}\n"
+            f"Section heading: {passage.section_heading}\n"
             f"Document: {passage.document_name}\n"
             f"Document ID: {passage.document_id}\n"
             f"Source URL: {passage.source.url}\n"
@@ -444,7 +521,7 @@ async def run_domain_inference(
         )
         for passage in passages
     )
-    system_message = " ".join(
+    instructions = " ".join(
         [
             COMMON_INSTRUCTIONS,
             DOMAIN_INSTRUCTIONS[request.domain],
@@ -454,104 +531,160 @@ async def run_domain_inference(
                 else ""
             ),
             f"Use {applicable_as_of.isoformat()} as the requested applicable date.",
-            "Retrieved source passages follow. Use only these passages as factual evidence:",
-            context,
+            "Numbered source passages follow; use only these passages as factual evidence. The user's question follows the passages.",
         ]
     )
-    completion = await client.chat_completions(
-        ChatCompletionRequest(
-            model=selected_model_id,
-            messages=[
-                NugenMessage(role="system", content=system_message),
-                NugenMessage(role="user", content=request.question),
-            ],
-            max_tokens=700,
-            prompt_truncate_len=3000,
-            temperature=0.2,
-            stream=False,
-            n=1,
-        )
-    )
-    answer = completion.choices[0].message.content if completion.choices else None
-    if answer is None or not answer.strip():
-        raise NugenProtocolError("Nugen returned no answer in the first completion choice.")
-
     known_passages = {passage.citation_id: passage for passage in passages}
-    cited_ids = citation_reference_ids(answer)
-    unknown_ids = cited_ids - known_passages.keys()
-    citation_like_markers = re.findall(r"\[S[^\]\r\n]*\]", answer)
-    malformed_markers = [
-        marker
-        for marker in citation_like_markers
-        if re.fullmatch(r"\[S\d+\]", marker) is None
-    ]
-    if not cited_ids or unknown_ids or malformed_markers:
-        # Do not return factual output that cannot be linked to valid prompt
-        # evidence markers.
-        answer = (
-            "Relevant source passages were retrieved, but the model did not return "
-            "verifiable citations for its response. I can't present that generated "
-            "wording as source-supported; please consult the source references below."
+    try:
+        answer, repair_retry_used, citation_issue = await _generate_with_citation_repair(
+            client=client,
+            model_id=selected_model_id,
+            question=request.question,
+            context=context,
+            instructions=instructions,
+            passages=known_passages,
         )
-        cited_passages = passages
-        source_grounding_supported = False
-        if unknown_ids:
-            unknown_list = ", ".join(sorted(unknown_ids, key=lambda item: int(item[1:])))
-            grounding_note = (
-                f"Unknown citation IDs were returned ({unknown_list}); the generated wording "
-                "was withheld."
+    except (NugenAPIError, NugenConfigurationError):
+        if not retain_evidence_on_provider_error:
+            raise
+        return DomainInferenceResponse(
+            domain=request.domain,
+            model_id=selected_model_id,
+            model_mode=model_mode,
+            alignment_status=alignment_status,
+            answer="Source passages were retrieved, but model generation did not complete; review the excerpts below.",
+            answer_state="withheld",
+            evidence=[_to_api_evidence(passage) for passage in passages],
+            source_references=_source_references(passages),
+            source_grounding_supported=False,
+            source_grounding_note="Model generation did not complete, so no generated wording could be validated.",
+            claim_verification_status="not_performed",
+            claim_verification_note="No generated answer was available for claim verification.",
+            limitations=_freshness_limitations(passages, applicable_as_of)
+            + ["Model generation did not complete; the retrieved source excerpts are retained."],
+            applicable_as_of=applicable_as_of,
+        )
+    except Exception:
+        return DomainInferenceResponse(
+            domain=request.domain,
+            model_id=selected_model_id,
+            model_mode=model_mode,
+            alignment_status=alignment_status,
+            answer="Source passages were retrieved, but model generation failed; review the excerpts below.",
+            answer_state="withheld",
+            evidence=[_to_api_evidence(passage) for passage in passages],
+            source_references=_source_references(passages),
+            source_grounding_supported=False,
+            source_grounding_note="No generated wording was available for citation validation.",
+            claim_verification_status="not_performed",
+            claim_verification_note="No generated answer was available for claim verification.",
+            limitations=_freshness_limitations(passages, applicable_as_of)
+            + ["Model generation did not complete; the retrieved source excerpts are retained."],
+            applicable_as_of=applicable_as_of,
+        )
+    selected_passages: list[RetrievedPassage] = []
+    cited_ids = citation_reference_ids(answer)
+    if citation_issue is None:
+        selected_passages = [
+            known_passages[citation_id]
+            for citation_id in sorted(cited_ids, key=lambda item: int(item[1:]))
+        ]
+    numeric_issue = (
+        request.domain == "tax"
+        and is_tax_slab_question(request.domain, request.question)
+        and citation_issue is None
+        and not all_numeric_claims_have_cited_values(answer, selected_passages)
+    )
+
+    if alignment_status == "aligned" and (citation_issue is not None or numeric_issue):
+        configured_base_id = settings.nugen_test_model_id.strip() if settings.nugen_test_model_id else None
+        failure_check = "citation validation" if citation_issue is not None else "tax-specific numeric validation"
+        verified_base = None
+        if configured_base_id:
+            try:
+                verified_base = await _find_base_model(client, configured_base_id)
+            except (NugenAPIError, NugenConfigurationError):
+                if not retain_evidence_on_provider_error:
+                    raise
+                verified_base = None
+            except Exception:
+                verified_base = None
+        if verified_base is not None:
+            selected_model_id = verified_base.model_id
+            model_mode = "base_fallback_after_validation_failure"
+            alignment_status = "unaligned"
+            limitations.append(
+                f"The aligned expert's output failed {failure_check}; a verified inference-ready base model was used."
             )
-        elif malformed_markers:
-            grounding_note = (
-                "Malformed citation markers were returned; the generated wording was withheld."
+            try:
+                answer, base_repair_retry_used, citation_issue = await _generate_with_citation_repair(
+                    client=client,
+                    model_id=selected_model_id,
+                    question=request.question,
+                    context=context,
+                    instructions=instructions,
+                    passages=known_passages,
+                )
+                repair_retry_used = repair_retry_used or base_repair_retry_used
+                cited_ids = citation_reference_ids(answer)
+                selected_passages = (
+                    [
+                        known_passages[citation_id]
+                        for citation_id in sorted(cited_ids, key=lambda item: int(item[1:]))
+                    ]
+                    if citation_issue is None
+                    else []
+                )
+                numeric_issue = (
+                    request.domain == "tax"
+                    and is_tax_slab_question(request.domain, request.question)
+                    and citation_issue is None
+                    and not all_numeric_claims_have_cited_values(answer, selected_passages)
+                )
+            except (NugenAPIError, NugenConfigurationError):
+                if not retain_evidence_on_provider_error:
+                    raise
+                citation_issue = "The verified base-model completion failed."
+                numeric_issue = False
+            except Exception:
+                citation_issue = "The verified base-model completion failed."
+                numeric_issue = False
+        else:
+            limitations.append(
+                f"The aligned expert's output failed {failure_check}, and the configured base model was not confirmed inference-ready."
+            )
+
+    source_grounding_supported = citation_issue is None and not numeric_issue
+    if not source_grounding_supported:
+        cited_passages = passages
+        answer_state = "withheld"
+        if citation_issue is not None:
+            grounding_note = f"{citation_issue} The generated wording was withheld."
+            answer = (
+                "Relevant source passages were retrieved, but the generated wording could not be "
+                "validated against them. Review the source excerpts below."
+            )
+            claim_verification_note = (
+                "The generated answer was withheld because citation markers were missing, malformed, or unknown."
             )
         else:
             grounding_note = (
-                "No valid citation markers were returned; the generated wording was withheld."
+                "Tax-specific numeric checks found values absent from their cited passages; "
+                "the generated draft was withheld. This literal check does not establish entailment."
+            )
+            answer = (
+                "The generated draft contained numeric values that do not appear in the cited "
+                "passages, so I withheld it. Review the source excerpts below."
+            )
+            claim_verification_note = (
+                "Claim verification was not run because the draft failed the cited-numeric-value check."
             )
         claim_verifications = []
         claim_verification_status = "not_performed"
-        claim_verification_note = (
-            "The generated answer was withheld because citation markers were missing, malformed, "
-            "or unknown; "
-            "no generated claims are presented as verified."
-        )
-    elif (
-        request.domain == "tax"
-        and is_tax_slab_question(request.domain, request.question)
-        and not all_numeric_claims_have_cited_values(
-            answer,
-            [known_passages[item] for item in cited_ids],
-        )
-    ):
-        cited_passages = [
-            known_passages[citation_id]
-            for citation_id in sorted(cited_ids, key=lambda item: int(item[1:]))
-        ]
-        answer = (
-            "The generated draft contained one or more numeric values that do not appear in "
-            "the passages cited on those claims, so I withheld it. No tax rates are being "
-            "presented as an answer."
-        )
-        source_grounding_supported = False
-        grounding_note = (
-            "Tax-specific numeric checks found values absent from their cited passages; "
-            "the generated draft was withheld. This literal check does not establish entailment."
-        )
-        claim_verifications = []
-        claim_verification_status = "not_performed"
-        claim_verification_note = (
-            "Claim verification was not run because the draft failed the cited-numeric-value check."
-        )
     else:
-        cited_passages = [
-            known_passages[citation_id]
-            for citation_id in sorted(cited_ids, key=lambda item: int(item[1:]))
-        ]
-        source_grounding_supported = True
-        grounding_note = (
-            "The answer cites retrieved passages from the matching READY domain documents."
-        )
+        cited_passages = selected_passages
+        answer_state = "validated"
+        grounding_note = "The answer cites retrieved passages from the matching READY domain documents."
         (
             claim_verifications,
             claim_verification_status,
@@ -569,23 +702,34 @@ async def run_domain_inference(
             ),
         )
         if claim_verification_status == "contains_contradiction":
+            answer_state = "withheld"
+            grounding_note = "Generated wording was withheld after claim verification flagged a contradiction."
+            cited_passages = passages
             answer = (
                 "The generated answer was withheld because claim verification found a "
-                "contradiction with the retrieved passages. Review the per-claim results "
-                "and evidence below."
+                "contradiction with the retrieved passages. Review the source excerpts below."
             )
         elif claim_verification_note.startswith("The verifier failed or returned malformed output"):
+            answer_state = "withheld"
+            grounding_note = "Generated wording was withheld because claim verification could not complete safely."
+            cited_passages = passages
             answer = (
                 "The generated answer was withheld because claim verification could not "
-                "complete safely. Review the unverified claim results and evidence below."
+                "complete safely. Review the source excerpts below."
             )
-    limitations = _freshness_limitations(cited_passages, applicable_as_of)
+
+    limitations.extend(_freshness_limitations(cited_passages, applicable_as_of))
+    if repair_retry_used:
+        limitations.append("A citation repair retry was used.")
 
     return DomainInferenceResponse(
         domain=request.domain,
         model_id=selected_model_id,
+        model_mode=model_mode,
         alignment_status=alignment_status,
         answer=answer.strip(),
+        answer_state=answer_state,
+        repair_retry_used=repair_retry_used,
         evidence=[_to_api_evidence(passage) for passage in cited_passages],
         source_references=_source_references(cited_passages),
         source_grounding_supported=source_grounding_supported,
@@ -597,6 +741,6 @@ async def run_domain_inference(
             for item in claim_verifications
         ),
         claim_verification_note=claim_verification_note,
-        limitations=limitations,
+        limitations=list(dict.fromkeys(limitations)),
         applicable_as_of=applicable_as_of,
     )

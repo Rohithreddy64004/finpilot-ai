@@ -59,6 +59,8 @@ def domain_response(
     answer: str | None = None,
     citation_id: str = "S1",
     grounded: bool = True,
+    answer_state: str | None = None,
+    include_evidence: bool = True,
 ) -> DomainInferenceResponse:
     source = SourceReference(
         title=f"{domain.title()} education source",
@@ -66,22 +68,36 @@ def domain_response(
         url=f"https://example.org/{domain}",
         accessed_on=date(2026, 10, 17),
     )
-    return DomainInferenceResponse(
-        domain=domain,
-        model_id="base-model",
-        alignment_status="unaligned",
-        answer=answer or f"{domain.title()} evidence supports this point. [{citation_id}]",
-        evidence=[
+    evidence = (
+        [
             RetrievedEvidence(
                 citation_id=citation_id,
                 passage_id=f"{domain}:passage-1",
                 document_id=f"{domain}-doc",
                 document_name=f"{domain.title()} source",
+                section_heading=f"{domain.title()} source section",
                 excerpt=f"{domain.title()} evidence supports this point.",
                 source=source,
             )
-        ],
-        source_references=[source],
+        ]
+        if include_evidence
+        else []
+    )
+    return DomainInferenceResponse(
+        domain=domain,
+        model_id="base-model",
+        model_mode="base_fallback",
+        alignment_status="unaligned",
+        answer=answer or (
+            f"{domain.title()} evidence supports this point. [{citation_id}]"
+            if grounded and include_evidence
+            else "Relevant source passages were retrieved, but generated wording could not be validated."
+            if include_evidence
+            else "No supporting passage found."
+        ),
+        answer_state=answer_state or ("validated" if grounded else "withheld" if include_evidence else "no_passages"),
+        evidence=evidence,
+        source_references=[source] if include_evidence else [],
         source_grounding_supported=grounded,
         source_grounding_note=(
             "The answer cites a retrieved passage." if grounded else "No passage supports the answer."
@@ -322,7 +338,7 @@ async def test_ask_expert_timeout_returns_an_error_state(
 
 
 @pytest.mark.asyncio
-async def test_ask_withholds_synthesis_with_unknown_citation(
+async def test_ask_uses_validated_expert_answers_when_synthesis_has_unknown_citation(
     monkeypatch: pytest.MonkeyPatch,
     install_ask_dependencies,
 ) -> None:
@@ -346,8 +362,10 @@ async def test_ask_withholds_synthesis_with_unknown_citation(
     response = await post_ask({"question": "Compare tax and insurance."})
 
     payload = response.json()
-    assert payload["final_answer_source_grounding_supported"] is False
-    assert "withheld" in payload["final_answer"].casefold()
+    assert payload["final_answer_source_grounding_supported"] is True
+    assert payload["final_answer_state"] == "validated"
+    assert "Tax evidence supports" in payload["final_answer"]
+    assert "Insurance evidence supports" in payload["final_answer"]
     assert any("not returned" in item for item in payload["gaps"])
 
 
@@ -381,6 +399,75 @@ async def test_ask_synthesis_failure_returns_individual_expert_answers(
     assert "Investment evidence" in payload["final_answer"]
     assert "Synthesis was unavailable" in payload["final_answer"]
     assert "[S1]" in payload["final_answer"] and "[S2]" in payload["final_answer"]
+
+
+@pytest.mark.asyncio
+async def test_ask_shows_ranked_excerpts_when_every_expert_answer_is_withheld(
+    monkeypatch: pytest.MonkeyPatch,
+    install_ask_dependencies,
+) -> None:
+    async def fake_run(request, **_: Any):
+        return domain_response(request.domain, grounded=False)
+
+    monkeypatch.setattr(ask_api, "run_domain_inference", fake_run)
+
+    response = await post_ask({"question": "Explain a tax rule.", "experts": ["tax"]})
+
+    payload = response.json()
+    assert payload["final_answer_state"] == "withheld"
+    assert payload["final_answer"] == "Source excerpts (no generated summary)"
+    assert payload["final_excerpt_source_ids"] == ["S1"]
+    assert payload["sources"][0]["source"]["title"] == "Tax education source"
+    assert payload["sources"][0]["section_heading"] == "Tax source section"
+    assert payload["sources"][0]["excerpt"] == "Tax evidence supports this point."
+    assert payload["sources"][0]["source"]["url"] == "https://example.org/tax"
+    assert payload["sources"][0]["source"]["accessed_on"] == "2026-10-17"
+
+
+@pytest.mark.asyncio
+async def test_ask_shows_excerpts_for_an_expert_skipped_from_final_answer(
+    monkeypatch: pytest.MonkeyPatch,
+    install_ask_dependencies,
+) -> None:
+    async def fake_route(question: str, **_: Any) -> RouterDecision:
+        return RouterDecision(
+            experts=["tax", "investment"],
+            reason="Question spans two domains.",
+            routing_method="model",
+        )
+
+    async def fake_run(request, **_: Any):
+        return domain_response(request.domain, grounded=request.domain == "tax")
+
+    monkeypatch.setattr(ask_api, "route", fake_route)
+    monkeypatch.setattr(ask_api, "run_domain_inference", fake_run)
+
+    response = await post_ask({"question": "Compare both topics."})
+
+    payload = response.json()
+    assert payload["final_answer_state"] == "validated"
+    assert "Tax evidence supports this point." in payload["final_answer"]
+    assert payload["final_excerpt_source_ids"] == ["S2"]
+    assert payload["sources"][1]["expert"] == "investment"
+
+
+@pytest.mark.asyncio
+async def test_ask_distinguishes_empty_retrieval_from_withheld_wording(
+    monkeypatch: pytest.MonkeyPatch,
+    install_ask_dependencies,
+) -> None:
+    async def fake_run(request, **_: Any):
+        return domain_response(request.domain, grounded=False, include_evidence=False)
+
+    monkeypatch.setattr(ask_api, "run_domain_inference", fake_run)
+
+    response = await post_ask({"question": "A question without matching passages.", "experts": ["tax"]})
+
+    payload = response.json()
+    assert payload["final_answer_state"] == "no_passages"
+    assert payload["final_answer"] == "No supporting passage found."
+    assert payload["sources"] == []
+    assert payload["final_excerpt_source_ids"] == []
 
 
 @pytest.mark.asyncio

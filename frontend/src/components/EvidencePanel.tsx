@@ -117,11 +117,9 @@ export function EvidencePanel({
                     <StatusBadge tone="teal">[{item.citation_id}]</StatusBadge>
                     <span>{item.document_name}</span>
                   </div>
-                  <MarkdownContent
-                    className="evidence-excerpt"
-                    text={item.excerpt.length > 420 ? `${item.excerpt.slice(0, 417).trimEnd()}…` : item.excerpt}
-                    linkCitations={false}
-                  />
+                  <p className="evidence-excerpt">
+                    {item.excerpt.length > 420 ? `${item.excerpt.slice(0, 417).trimEnd()}…` : item.excerpt}
+                  </p>
                   <div className="source-meta">
                     <span>{item.source.title}{item.source.publisher ? ` · ${item.source.publisher}` : ''}</span>
                     {item.source.accessed_on && <span>Retrieved {item.source.accessed_on}</span>}
