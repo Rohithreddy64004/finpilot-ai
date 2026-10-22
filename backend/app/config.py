@@ -1,6 +1,7 @@
 """Environment-backed application settings."""
 
 from functools import lru_cache
+from ipaddress import ip_address
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -20,9 +21,7 @@ class Settings(BaseSettings):
 
     app_name: str = "FinPilot AI API"
     app_env: Literal["development", "test", "production"] = "development"
-    cors_allowed_origins: str = (
-        "http://localhost:5173,http://127.0.0.1:5173"
-    )
+    frontend_origins: str = ""
     mongodb_uri: SecretStr = SecretStr("mongodb://localhost:27017")
     mongodb_database: str = "finpilot"
     mongodb_timeout_ms: int = Field(default=10_000, ge=500, le=60_000)
@@ -62,26 +61,58 @@ class Settings(BaseSettings):
             raise ValueError("NUGEN_API_BASE_URL must be an HTTPS URL without credentials")
         return value.rstrip("/")
 
-    @field_validator("cors_allowed_origins")
+    @field_validator("frontend_origins")
     @classmethod
-    def cors_origins_must_be_explicit_http_origins(cls, value: str) -> str:
-        origins = [origin.strip() for origin in value.split(",") if origin.strip()]
-        if not origins:
-            raise ValueError("CORS_ALLOWED_ORIGINS must contain at least one origin")
+    def frontend_origins_must_be_exact_trusted_origins(cls, value: str) -> str:
+        if not value.strip():
+            return ""
+        origins = [origin.strip() for origin in value.split(",")]
+        if any(not origin for origin in origins):
+            raise ValueError("FRONTEND_ORIGINS must be a comma-separated list of exact origins")
         for origin in origins:
-            parsed = urlsplit(origin)
+            try:
+                parsed = urlsplit(origin)
+                port = parsed.port
+            except ValueError:
+                raise ValueError(
+                    "FRONTEND_ORIGINS must contain valid HTTPS origins; only http://localhost:5173 is allowed for development"
+                ) from None
+            is_local_dev_origin = origin == "http://localhost:5173"
+            hostname = parsed.hostname or ""
+            try:
+                ip_address(hostname)
+                valid_hostname = True
+            except ValueError:
+                labels = hostname.split(".")
+                valid_hostname = bool(hostname) and len(hostname) <= 253 and all(
+                    0 < len(label) <= 63
+                    and label[0].isalnum()
+                    and label[-1].isalnum()
+                    and all(
+                        character.isascii()
+                        and (character.isalnum() or character == "-")
+                        for character in label
+                    )
+                    for label in labels
+                )
             if (
-                parsed.scheme.lower() not in {"http", "https"}
-                or not parsed.hostname
+                (parsed.scheme.lower() != "https" and not is_local_dev_origin)
+                or not valid_hostname
                 or parsed.username is not None
                 or parsed.password is not None
-                or parsed.path not in {"", "/"}
+                or parsed.path
                 or parsed.query
                 or parsed.fragment
-                or origin == "*"
+                or "*" in origin
+                or origin != f"{parsed.scheme}://{parsed.netloc}"
+                or parsed.netloc != parsed.netloc.lower()
+                or (parsed.scheme.lower() == "http" and not is_local_dev_origin)
+                or (is_local_dev_origin and port != 5173)
+                or (parsed.scheme.lower() == "https" and port == 443)
+                or (port == 0)
             ):
                 raise ValueError(
-                    "CORS_ALLOWED_ORIGINS must be comma-separated HTTP(S) origins without paths or wildcards"
+                    "FRONTEND_ORIGINS must contain valid HTTPS origins; only http://localhost:5173 is allowed for development"
                 )
         return ",".join(origins)
 

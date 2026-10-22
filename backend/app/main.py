@@ -43,10 +43,26 @@ FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 def cors_origins_for(settings: Settings) -> list[str]:
-    """The UI and API are same-origin; the backend grants no CORS origins."""
+    """Return the configured exact frontend origins, or no origins when unset."""
 
-    del settings
-    return []
+    if not settings.frontend_origins:
+        return []
+    return settings.frontend_origins.split(",")
+
+
+def add_frontend_cors(application: FastAPI, runtime_settings: Settings) -> None:
+    """Add optional CORS support with the exact configured frontend origins."""
+
+    origins = cors_origins_for(runtime_settings)
+    if not origins:
+        return
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+    )
 
 
 @asynccontextmanager
@@ -91,13 +107,7 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
 app.add_middleware(InferenceBodyLimitMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins_for(settings),
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT"],
-    allow_headers=["Content-Type"],
-)
+add_frontend_cors(app, settings)
 app.include_router(workflow_router)
 app.include_router(inference_router)
 app.include_router(ask_router)

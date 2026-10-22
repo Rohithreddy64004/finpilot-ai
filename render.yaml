@@ -23,6 +23,8 @@ services:
         sync: false
       - key: MONGODB_DATABASE
         sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
       - key: FINPILOT_CORRECTION_REVIEW_TOKEN
         sync: false
       - key: NUGEN_TIMEOUT_SECONDS

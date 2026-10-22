@@ -30,7 +30,7 @@ The three expert retrieval paths are domain-filtered and use the local BM25 impl
 - `backend/app/`: FastAPI routes, typed schemas, routing, retrieval, inference, synthesis, feedback, alignment tracking, and source-content storage.
 - `backend/app/nugen/`: provider-specific Nugen client, schemas, safe errors, and document/alignment service methods.
 - `backend/tests/`: local tests. Provider calls use mocked HTTP transports; no test submits an alignment or deployment job.
-- `frontend/`: React and TypeScript chat UI. In production, the compiled app is served by FastAPI from the same origin as the API.
+- `frontend/`: React and TypeScript chat UI. It can be served by FastAPI from the same origin or deployed separately to Firebase Hosting with the Render API.
 - `knowledge_bases/*_expert.txt`: source-labeled educational corpora for the three domains.
 - `knowledge_bases/prepared/`: reviewed source drafts; they are scanned but are not selected for inference unless registered and activated.
 - `knowledge_bases/source_documents/`: ignored local retrieval bytes, named by a hash of each Nugen document ID. Never commit this directory.
@@ -74,7 +74,7 @@ Set-Location C:\Users\rohit\finpilot-ai\frontend
 npm run dev
 ```
 
-The Vite development server proxies `/api` and `/health` to the API. The production app and API use the same origin; CORS grants no external origins. `/health` is the liveness endpoint and does not call Nugen or MongoDB.
+The Vite development server proxies `/api` and `/health` to the API. The single-service production app and API use the same origin, so CORS stays disabled unless a separate frontend origin is configured. `/health` is the liveness endpoint and does not call Nugen or MongoDB.
 
 ## Configuration
 
@@ -88,8 +88,12 @@ Create a local `.env` file in the repository root and configure values on your o
 - `NUGEN_INSURANCE_MODEL_ID`
 - `MONGODB_URI`
 - `MONGODB_DATABASE`
+- `FRONTEND_ORIGINS`
 - `FINPILOT_CORRECTION_REVIEW_TOKEN`
+- `NUGEN_TIMEOUT_SECONDS`
 - `SEED_CONTENT_ON_STARTUP`
+
+The frontend build-time variable is `VITE_API_BASE_URL`.
 
 The Nugen key is server-side only. Do not put it in Vite settings or browser code. Model IDs are configuration, not proof of domain alignment. Alignment is provider-confirmed only after the tracked job, resulting aligned-model row, and deployment status are checked.
 
@@ -193,18 +197,51 @@ git diff --check
 
 Backend tests use fakes and mocked HTTP responses. They do not require API credits, a live MongoDB service, document uploads, alignment submission, deployment, or live inference.
 
-## Render and MongoDB Atlas deployment
+## Deployment options
 
-`Dockerfile` builds the React app and runs the FastAPI server in one container. It binds to the `PORT` environment variable and checks `/health`. `render.yaml` defines one Docker web service, uses `/health` as its health check, disables automatic deployment, and marks each environment variable `sync: false`; no secret values are stored in the blueprint.
+Choose either deployment shape:
 
-Manual deployment outline:
+1. **Single Render service:** the Docker image builds React and serves the compiled frontend and FastAPI from the same origin. No browser CORS configuration is needed.
+2. **Firebase frontend with Render API:** Firebase Hosting serves the React build, while the existing Render service remains the FastAPI API. Set `VITE_API_BASE_URL` at frontend build time and set `FRONTEND_ORIGINS` on Render to the exact HTTPS Firebase Hosting origin. The frontend value is public and must not contain secrets.
+
+The primary product URL has not been designated; choose it after confirming which deployment option should be primary.
+
+### Single Render service
+
+1. Connect the repository to Render and create the web service from `render.yaml`.
+2. Enter the required environment variables by name from the Configuration section. Keep secret values in Render, not in the repository.
+3. Manually deploy the Docker service. Auto-deploy is disabled.
+4. Check `/health`, then verify document readiness and active source selections before using inference.
+
+### Firebase Hosting with Render API
+
+1. Keep the Render Docker service running as the API. Set `FRONTEND_ORIGINS` on Render to the exact HTTPS origin Firebase Hosting assigns to this project, then manually redeploy the backend.
+2. From `frontend/`, install dependencies and build the static app with the public API base URL:
+
+   ```powershell
+   npm ci
+   $env:VITE_API_BASE_URL = "https://finpilot-ai-t691.onrender.com"
+   npm run build
+   ```
+
+3. Deploy the static build to the configured Firebase project:
+
+   ```powershell
+   firebase deploy --only hosting --project finpilot-ai-nugen
+   ```
+
+4. Open the Hosting URL, check that `/health` on the Render API responds, and smoke test the browser requests and feedback flow.
+
+The Firebase Hosting origin and the primary product URL should be recorded after the Hosting deployment and your choice of primary URL.
+
+## MongoDB Atlas setup
+
+The Render service uses the Dockerfile and health check described above. MongoDB Atlas setup is shared by both deployment options:
 
 1. Create a MongoDB Atlas database and a least-privilege application user. Configure network access for the Render service using a documented secure access method.
 2. Decide how to migrate or re-register the source-document records, local bytes, active-source selections, interaction records, and alignment tracking. A new database does not inherit existing Atlas state automatically.
-3. Connect the GitHub repository to Render and review the Blueprint before creating the service. Confirm that the deployment is manual and that the Docker health check is `/health`.
-4. Enter the required values for the names listed under Configuration in the Render dashboard. Never commit a populated `.env` or place credentials in frontend settings.
-5. Verify `/health`, document readiness, local source-content availability, and active-source selections. Then use the manual alignment report to check provider status if needed.
-6. Deploy only after reviewing logs and the exact resource changes. No service has been deployed from this repository change.
+3. Enter the backend environment variables by name from the Configuration section in Render. Never commit a populated `.env` or place credentials in frontend settings.
+4. Verify `/health`, document readiness, local source-content availability, and active-source selections. Then use the manual alignment report to check provider status if needed.
 
 See the [Render Blueprint specification](https://render.com/docs/blueprint-spec) and [MongoDB Atlas documentation](https://www.mongodb.com/docs/atlas/) for current platform setup details.
 

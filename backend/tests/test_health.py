@@ -108,7 +108,7 @@ async def test_readiness_returns_safe_mongo_failure(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_frontend_origin_is_denied_by_same_origin_cors_policy() -> None:
+async def test_unconfigured_frontend_origins_leave_preflight_unhandled() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.options(
@@ -120,13 +120,13 @@ async def test_frontend_origin_is_denied_by_same_origin_cors_policy() -> None:
             },
         )
 
-    assert response.status_code == 400
+    assert response.status_code == 405
     assert "access-control-allow-origin" not in response.headers
     assert "access-control-allow-credentials" not in response.headers
 
 
 @pytest.mark.asyncio
-async def test_unknown_frontend_origin_is_not_allowed() -> None:
+async def test_unconfigured_frontend_origins_do_not_add_cors_headers() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.options(
@@ -137,7 +137,7 @@ async def test_unknown_frontend_origin_is_not_allowed() -> None:
             },
         )
 
-    assert response.status_code == 400
+    assert response.status_code == 405
     assert "access-control-allow-origin" not in response.headers
 
 

@@ -50,17 +50,28 @@ def test_mongodb_timeout_and_optional_claim_verifier_configuration(monkeypatch: 
         Settings(_env_file=None, mongodb_timeout_ms=100)
 
 
-def test_cors_origins_are_explicit_and_disallow_wildcards() -> None:
+def test_frontend_origins_are_exact_https_origins_with_localhost_development() -> None:
     settings = Settings(
         _env_file=None,
-        cors_allowed_origins="http://localhost:5173,https://finpilot.example",
+        frontend_origins="http://localhost:5173,https://finpilot.example",
     )
-    assert settings.cors_allowed_origins == "http://localhost:5173,https://finpilot.example"
+    assert settings.frontend_origins == "http://localhost:5173,https://finpilot.example"
+    assert Settings(_env_file=None, frontend_origins="").frontend_origins == ""
 
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, cors_allowed_origins="*")
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, cors_allowed_origins="http://localhost:5173/path")
+    for invalid in (
+        "*",
+        "https://*.finpilot.example",
+        "http://example.test",
+        "http://localhost:5173/path",
+        "https://finpilot.example/path",
+        "https://finpilot.example#",
+        "https://finpilot.example:443",
+        "https://exa mple.example",
+        "https://finpilot.example,",
+        "https://finpilot.example:invalid",
+    ):
+        with pytest.raises(ValidationError, match="FRONTEND_ORIGINS"):
+            Settings(_env_file=None, frontend_origins=invalid)
 
 
 def test_startup_content_seed_is_optional_and_disabled_by_default(

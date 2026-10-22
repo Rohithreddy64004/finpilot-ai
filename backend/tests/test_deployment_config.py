@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import re
 
@@ -12,6 +13,7 @@ RENDER_ENVIRONMENT_NAMES = {
     "NUGEN_INSURANCE_MODEL_ID",
     "MONGODB_URI",
     "MONGODB_DATABASE",
+    "FRONTEND_ORIGINS",
     "FINPILOT_CORRECTION_REVIEW_TOKEN",
     "NUGEN_TIMEOUT_SECONDS",
     "SEED_CONTENT_ON_STARTUP",
@@ -89,3 +91,19 @@ def test_gitignore_excludes_secrets_caches_and_generated_source_bytes() -> None:
         "frontend/.turbo/",
     ):
         assert pattern in text
+
+
+def test_firebase_hosting_serves_dist_with_spa_rewrite_and_cache_headers() -> None:
+    frontend = ROOT / "frontend"
+    firebase = json.loads((frontend / "firebase.json").read_text(encoding="utf-8"))
+    hosting = firebase["hosting"]
+    assert hosting["public"] == "dist"
+    assert hosting["ignore"] == ["firebase.json", "**/.*", "**/node_modules/**"]
+    assert hosting["rewrites"] == [{"source": "**", "destination": "/index.html"}]
+    headers = {item["source"]: item["headers"][0]["value"] for item in hosting["headers"]}
+    assert headers["/assets/**"] == "public, max-age=31536000, immutable"
+    assert headers["/index.html"] == "no-cache"
+    firebaserc = json.loads((frontend / ".firebaserc").read_text(encoding="utf-8"))
+    assert firebaserc["projects"]["default"] == "finpilot-ai-nugen"
+    assert ".firebase/" in (frontend / ".gitignore").read_text(encoding="utf-8")
+    assert not (frontend / "public" / "index.html").exists()

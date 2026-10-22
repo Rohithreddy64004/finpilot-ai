@@ -16,8 +16,9 @@ import type {
   SourceReference,
 } from '../types/api'
 
-// Keep browser requests same-origin; Vite proxies these paths in local dev.
-const API_BASE_URL = ''
+// Keep browser requests same-origin unless a separate frontend deployment sets this at build time.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+const apiUrl = (path: string) => `${API_BASE_URL}${path}`
 const REQUEST_TIMEOUT_MS = 60_000
 
 export class ApiError extends Error {
@@ -290,7 +291,7 @@ export async function requestInference(request: InferenceRequest): Promise<Infer
   try {
     let response: Response
     try {
-      response = await fetch(`${API_BASE_URL}/api/inference`, {
+      response = await fetch(apiUrl('/api/inference'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(request),
@@ -533,7 +534,7 @@ async function postJson(path: string, body: unknown, timeoutMs = REQUEST_TIMEOUT
   try {
     let response: Response
     try {
-      response = await fetch(API_BASE_URL + path, {
+      response = await fetch(apiUrl(path), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(body),
@@ -567,7 +568,7 @@ export async function requestSourceHealth(): Promise<SourceHealthResponse> {
   try {
     let response: Response
     try {
-      response = await fetch('/api/source-health', {
+      response = await fetch(apiUrl('/api/source-health'), {
         headers: { Accept: 'application/json' },
         signal: controller.signal,
       })

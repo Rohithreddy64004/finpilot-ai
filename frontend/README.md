@@ -17,7 +17,7 @@ Set-Location frontend
 npm ci
 ```
 
-The frontend uses same-origin API paths, and Vite proxies them to the local backend during development. No frontend environment file is required.
+The frontend uses same-origin API paths by default, and Vite proxies them to the local backend during development. For a separate frontend deployment, set `VITE_API_BASE_URL` to the backend origin before building; for example, use `https://finpilot-ai-t691.onrender.com` for the current Render backend. The value is embedded in the public browser bundle. No frontend environment file is required.
 
 `VITE_*` values are compiled into browser code and are public. Never put Nugen keys, MongoDB credentials, or other secrets in the frontend environment. Keep `NUGEN_API_KEY` and model IDs in the backend `.env`.
 
@@ -36,7 +36,7 @@ Set-Location frontend
 npm run dev -- --host 127.0.0.1
 ```
 
-Open the Vite URL printed in the terminal, normally `http://127.0.0.1:5173`. The backend's `CORS_ALLOWED_ORIGINS` defaults to `http://localhost:5173,http://127.0.0.1:5173`. If you use another frontend origin, add that exact origin to the backend `.env` value and restart FastAPI. Wildcard origins are rejected, and CORS credentials are disabled.
+Open `http://localhost:5173`. Vite proxies API requests to the local backend, so normal local development does not need CORS. If the browser calls the backend directly, include `http://localhost:5173` in `FRONTEND_ORIGINS`. Other configured origins must use HTTPS and be listed exactly. Wildcards are rejected, and credentials are disabled.
 
 ## Backend integration
 
@@ -55,7 +55,7 @@ The response is rendered from the backend's `DomainInferenceResponse`: Markdown 
 
 The backend currently sends each question as a standalone inference request. Previous turns remain visible in the current page session but are not sent as conversation context. Starting a new chat keeps prior chats available in the sidebar until the page is reloaded.
 
-For a production frontend on another origin, set `CORS_ALLOWED_ORIGINS` on FastAPI to the precise trusted origin, for example `https://finpilot.example`, and restart the API. Do not use `*`.
+For a production frontend on another origin, set `FRONTEND_ORIGINS` on FastAPI to the precise trusted HTTPS origin used by the frontend, then restart the API. Do not use `*`.
 
 ## Checks
 
@@ -72,7 +72,7 @@ The API-service and UI tests mock `fetch`; they do not call Nugen, MongoDB, or t
 ## Troubleshooting
 
 - **“Cannot reach the FinPilot backend”**: check that Uvicorn is running and the Vite development server is proxying `/api` requests to it.
-- **CORS preflight failure**: verify the browser origin exactly matches one entry in backend `CORS_ALLOWED_ORIGINS`, then restart FastAPI.
+- **CORS preflight failure**: verify the browser origin exactly matches one entry in backend `FRONTEND_ORIGINS`, then restart FastAPI.
 - **HTTP 422**: the backend rejected the request shape or selected domain; the UI displays FastAPI's validation summary.
 - **HTTP 409/503**: check that the selected domain has active READY sources and a configured inference-ready model in the backend.
 - **No grounded answer**: the API intentionally withholds generated wording when citations are missing or invalid, and it does not invent missing source evidence.

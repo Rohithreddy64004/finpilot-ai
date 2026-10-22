@@ -120,6 +120,22 @@ describe('requestInference', () => {
     expect(response.claim_verification_status).toBe('unverified')
   })
 
+  it.each([
+    ['configured', 'https://api.example.test', 'https://api.example.test/api/ask'],
+    ['configured with trailing slash', 'https://api.example.test///', 'https://api.example.test/api/ask'],
+    ['unset', undefined, '/api/ask'],
+  ])('uses the API base URL when %s', async (_label, baseUrl, expectedUrl) => {
+    vi.stubEnv('VITE_API_BASE_URL', baseUrl)
+    vi.resetModules()
+    const api = await import('./api')
+    const fetchMock = vi.fn().mockResolvedValue(mockedResponse(askResponseFixture()))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.requestAsk({ question: 'How do tax regimes work?' })
+
+    expect(fetchMock.mock.calls[0][0]).toBe(expectedUrl)
+  })
+
   it('shows safe validation details from FastAPI', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockedResponse({
       detail: [{ loc: ['body', 'question'], msg: 'Field required', type: 'missing' }],
