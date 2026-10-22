@@ -1,94 +1,67 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
-import type { AskResponse, Domain, InferenceResponse } from './types/api'
+import type { AskExpertResult, AskResponse, AskSource, Domain, ModelMode } from './types/api'
 
-function answerFixture(domain: Domain = 'investment'): InferenceResponse {
+function sourceFixture(domain: Domain, citationId = 'S1'): AskSource {
   return {
-    domain,
-    model_id: 'fixture-base-model',
-    model_mode: 'base_fallback',
-    alignment_status: 'unaligned',
-    answer: 'Diversification spreads exposure across investments. [S1]',
-    answer_state: 'validated',
-    repair_retry_used: false,
-    evidence: [{
-      citation_id: 'S1',
-      passage_id: 'investment:fixture:1',
-      document_id: 'document-fixture',
-      document_name: 'SEBI investor guide',
-      section_heading: 'Portfolio diversification',
-      excerpt: 'Diversification can reduce the effect of one investment on a portfolio.',
-      source: {
-        title: 'Investor education guide',
-        publisher: 'SEBI',
-        url: 'https://www.sebi.gov.in/investor',
-        accessed_on: '2026-10-15',
-      },
-    }],
-    source_references: [],
-    source_grounding_supported: true,
-    source_grounding_note: 'The answer cites a retrieved passage.',
-    claim_verifications: [{
-      claim_text: 'Diversification spreads exposure across investments.',
-      status: 'unverified',
-      assessment_basis: 'source_text_comparison',
-      evidence_ids: [],
-      cited_evidence_ids: ['S1'],
-      note: 'No direct wording match was found in this claim\'s cited passage(s).',
-    }],
-    claim_verification_status: 'verification_unavailable',
-    independent_verification_performed: false,
-    claim_verification_note: 'No independent claim verifier is configured.',
-    limitations: ['This is general education.'],
-    applicable_as_of: '2026-10-16',
-    educational_disclaimer: 'FinPilot AI provides general financial education, not licensed advice.',
-  }
-}
-
-function askFixture(domain: Domain = 'investment'): AskResponse {
-  const source = {
     expert: domain,
-    citation_id: 'S1',
-    passage_id: domain + ':fixture:1',
-    document_id: 'document-fixture',
-    document_name: domain + ' public guide',
+    citation_id: citationId,
+    passage_id: `${domain}:fixture:${citationId}`,
+    document_id: `${domain}-document`,
+    document_name: `${domain} public guide`,
     section_heading: 'General education',
     excerpt: 'Diversification can reduce the effect of one investment on a portfolio.',
     source: {
-      title: 'Public education guide',
+      title: `${domain} public education guide`,
       publisher: domain === 'investment' ? 'SEBI' : 'Public authority',
       url: 'https://example.gov.in/guide',
       accessed_on: '2026-10-15',
     },
   }
+}
+
+function expertFixture(
+  domain: Domain,
+  source: AskSource,
+  alignment: 'aligned' | 'unaligned' = 'unaligned',
+  mode: ModelMode = 'base_fallback',
+): AskExpertResult {
+  return {
+    expert: domain,
+    status: 'complete',
+    answer: `Diversification spreads exposure across investments. [${source.citation_id}]`,
+    model_id: 'fixture-base-model',
+    model_mode: mode,
+    alignment_status: alignment,
+    answer_state: 'validated',
+    repair_retry_used: false,
+    source_grounding_supported: true,
+    source_grounding_note: 'Cited source text.',
+    evidence: [source],
+    claim_verifications: [{
+      claim_text: 'Diversification spreads exposure across investments.',
+      status: 'unverified',
+      assessment_basis: 'source_text_comparison',
+      evidence_ids: [],
+      cited_evidence_ids: [source.citation_id],
+      note: 'Not independently assessed.',
+    }],
+    claim_verification_status: 'verification_unavailable',
+    independent_verification_performed: false,
+    claim_verification_note: 'Verifier unavailable.',
+    limitations: ['This is general education.', '  '],
+    error: null,
+  }
+}
+
+function askFixture(domain: Domain = 'investment'): AskResponse {
+  const source = sourceFixture(domain)
   return {
     request_id: 'request-fixture',
     question: 'What is diversification?',
-    routing: {
-      experts: [domain],
-      reason: 'Selected ' + domain + ' education.',
-      routing_method: 'fallback',
-    },
-    experts: [{
-      expert: domain,
-      status: 'complete',
-      answer: 'Diversification spreads exposure across investments. [S1]',
-      model_id: 'fixture-base-model',
-      model_mode: 'base_fallback',
-      alignment_status: 'unaligned',
-      answer_state: 'validated',
-      repair_retry_used: false,
-      source_grounding_supported: true,
-      source_grounding_note: 'The answer cites a retrieved passage.',
-      evidence: [source],
-      claim_verifications: [],
-      claim_verification_status: 'verification_unavailable',
-      independent_verification_performed: false,
-      claim_verification_note: 'No independent claim verifier is configured.',
-      limitations: ['This is general education.'],
-      error: null,
-    }],
+    routing: { experts: [domain], reason: `Selected ${domain} education.`, routing_method: 'model' },
+    experts: [expertFixture(domain, source)],
     final_answer: 'Diversification spreads exposure across investments. [S1]',
     final_answer_state: 'validated',
     final_excerpt_source_ids: [],
@@ -97,442 +70,240 @@ function askFixture(domain: Domain = 'investment'): AskResponse {
     final_answer_claim_verifications: [],
     final_answer_claim_verification_status: 'verification_unavailable',
     final_answer_independent_verification_performed: false,
-    final_answer_claim_verification_note: 'No independent claim verifier is configured.',
+    final_answer_claim_verification_note: 'Verifier unavailable.',
     sources: [source],
     gaps: [],
-    latency_ms: {
-      routing_ms: 8,
-      experts_ms: 20,
-      per_expert_ms: { [domain]: 19 },
-      synthesis_ms: 0,
-      total_ms: 31,
-    },
+    latency_ms: { routing_ms: 8, experts_ms: 20, per_expert_ms: { [domain]: 19 }, synthesis_ms: 0, total_ms: 31 },
   }
 }
 
-function mockFetch(response: unknown, status = 200, sourceHealth?: unknown) {
-  const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
-    const isHealth = String(input) === '/api/source-health'
-    const value = isHealth ? sourceHealth ?? {
-      domains: ['tax', 'investment', 'insurance'].map((domain) => ({
-        domain,
-        active_document_ids: [`${domain}-fixture`],
-        status: 'ready',
-        message: 'The active source passed local quality checks.',
-        issues: [],
-      })),
-    } : response
-    const responseStatus = isHealth ? 200 : status
-    return Promise.resolve({
-      ok: responseStatus >= 200 && responseStatus < 300,
-      status: responseStatus,
-      text: async () => JSON.stringify(value),
-    })
+function installFetch(value: unknown, status = 200) {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => JSON.stringify(value),
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
 
-function askCalls(fetchMock: ReturnType<typeof vi.fn>) {
-  return fetchMock.mock.calls.filter(([input]) => String(input) !== '/api/source-health')
+function sendQuestion(question = 'What is diversification?') {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), { target: { value: question } })
+  fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
 }
 
-async function expectAnswerVisible() {
-  const matches = await screen.findAllByText(/Diversification spreads exposure across investments/)
-  expect(matches.some((element) => element.closest('.answer-copy'))).toBe(true)
-}
-
-describe('FinPilot chat interface', () => {
-  it('starts in the light theme and exposes an accessible assistant disclosure', () => {
+describe('FinPilot answer view', () => {
+  it('shows one final answer by default, sources, and one base trust badge', async () => {
+    const fetchMock = installFetch(askFixture())
     const { container } = render(<App />)
+    sendQuestion()
 
-    expect(container.querySelector('.app-shell')?.getAttribute('data-theme')).toBe('light')
-    fireEvent.click(screen.getByText('About this assistant'))
-    expect(screen.getByText(/routes one question at a time across tax, investment, and insurance/)).toBeTruthy()
+    await screen.findByText('Validated')
+    expect(container.querySelectorAll('.answer-copy')).toHaveLength(1)
+    expect(container.querySelector('.answer-copy')?.textContent).toContain('Diversification spreads exposure')
+    expect(screen.getByText('Base model')).not.toBeNull()
+    expect(screen.getByRole('heading', { name: 'Sources' })).not.toBeNull()
+    expect(screen.getByText('SEBI')).not.toBeNull()
+    expect(screen.getByText('Retrieved 2026-10-15')).not.toBeNull()
+    expect(screen.getByRole('link', { name: /Open source/ }).getAttribute('href')).toBe('https://example.gov.in/guide')
+    expect(container.querySelector('.answer-copy a.markdown-citation')?.getAttribute('href')).toBe('#evidence-S1')
+    expect(container.textContent).toContain('Educational information only. Not personalized or licensed financial advice.')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('lets the router choose and renders answer metadata and source evidence', async () => {
-    const fetchMock = mockFetch(askFixture())
-    const { container } = render(<App />)
-
-    expect(container.querySelector('.domain-selector')).toBeNull()
-    expect(screen.getByLabelText('Investment')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /what is the difference between saving and investing/i }))
-    const questionInput = screen.getByRole('textbox', { name: 'Your finance question' })
-    expect((questionInput as HTMLTextAreaElement).value).toBe('What is the difference between saving and investing?')
-    fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
-
-    await expectAnswerVisible()
-    expect(askCalls(fetchMock)).toHaveLength(1)
-    const [, init] = askCalls(fetchMock)[0] as [string, RequestInit]
-    expect(JSON.parse(String(init.body))).toEqual({
-      question: 'What is the difference between saving and investing?',
-    })
-    expect(screen.getAllByText('Validated answer').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Verification unavailable')).toHaveLength(2)
-    expect(screen.getByText(/No independent claim verifier is configured/)).toBeTruthy()
-    expect(screen.getByText('Base model (not aligned)')).toBeTruthy()
-    expect(screen.getByText('fixture-base-model')).toBeTruthy()
-    fireEvent.click(screen.getAllByText(/Sources & evidence/)[0])
-    expect(screen.getAllByText(/Diversification can reduce the effect/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/SEBI/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Retrieved 2026-10-15').length).toBeGreaterThan(0)
-    const sebiSourceLink = screen.getAllByRole('link').find(
-      (link) => link.getAttribute('href') === 'https://example.gov.in/guide',
-    )
-    expect(sebiSourceLink).toBeTruthy()
-    expect(screen.getByText('Not a substitute for personal financial advice.')).toBeTruthy()
-    expect(screen.queryByText('FinPilot AI provides general financial education, not licensed advice.')).toBeNull()
-  }, 10_000)
-
-  it('sends an explicit expert override only when one is selected', async () => {
-    const fetchMock = mockFetch(askFixture('insurance'))
-    render(<App />)
-    fireEvent.click(screen.getByLabelText('Insurance'))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
-      target: { value: 'What is an insurance premium?' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
-
-    await expectAnswerVisible()
-    const [, init] = askCalls(fetchMock)[0] as [string, RequestInit]
-    expect(JSON.parse(String(init.body))).toEqual({
-      question: 'What is an insurance premium?',
-      experts: ['insurance'],
-    })
-  })
-
-  it('shows a safe backend-unavailable state', async () => {
-    mockFetch({ detail: 'internal server traceback' }, 503)
-    render(<App />)
-    fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
-      target: { value: 'Explain a tax rebate.' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
-
-    expect((await screen.findByRole('alert')).textContent).toContain('FinPilot service is not ready')
-    expect(screen.queryByText('internal server traceback')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-  })
-
-  it('shows actionable source banners for invalid and missing active corpora', async () => {
-    mockFetch(askFixture(), 200, {
-      domains: [
-        {
-          domain: 'tax', active_document_ids: ['old-tax-doc'], status: 'invalid',
-          message: 'The active tax source fails local quality checks. Review the corpus, then register and activate a verified source before retrying.',
-          issues: ['instruction-style heading'],
-        },
-        {
-          domain: 'investment', active_document_ids: [], status: 'missing',
-          message: 'No active investment source is selected. Register a verified official corpus and activate it before asking this expert.',
-          issues: [],
-        },
-        {
-          domain: 'insurance', active_document_ids: ['insurance-doc'], status: 'ready',
-          message: 'The active insurance source passed local quality checks.', issues: [],
-        },
-      ],
-    })
-    render(<App />)
-
-    expect(await screen.findByText(/Tax source needs attention/)).toBeTruthy()
-    expect(screen.getByText(/register and activate a verified source before retrying/)).toBeTruthy()
-    expect(screen.getByText(/Investment source needs attention/)).toBeTruthy()
-    expect(screen.queryByText(/Insurance source needs attention/)).toBeNull()
-  })
-
-  it('retries the same question after a safe backend error', async () => {
-    const askResponses = [
-      { value: { detail: 'internal server traceback' }, status: 503 },
-      { value: askFixture('tax'), status: 200 },
-    ]
-    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
-      if (String(input) === '/api/source-health') {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          text: async () => JSON.stringify({
-            domains: ['tax', 'investment', 'insurance'].map((domain) => ({
-              domain, active_document_ids: [`${domain}-fixture`], status: 'ready',
-              message: 'Ready.', issues: [],
-            })),
-          }),
-        })
-      }
-      const next = askResponses.shift()!
-      return Promise.resolve({
-        ok: next.status >= 200 && next.status < 300,
-        status: next.status,
-        text: async () => JSON.stringify(next.value),
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    render(<App />)
-    fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
-      target: { value: 'Explain a tax rebate.' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
-    await screen.findByRole('button', { name: 'Retry' })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    await expectAnswerVisible()
-
-    expect(askCalls(fetchMock)).toHaveLength(2)
-    const [, retryInit] = askCalls(fetchMock)[1] as [string, RequestInit]
-    expect(JSON.parse(String(retryInit.body))).toEqual({ question: 'Explain a tax rebate.' })
-  })
-
-  it('supports Ctrl+Enter from the question field', async () => {
-    const fetchMock = mockFetch(askFixture('tax'))
-    render(<App />)
-    const input = screen.getByRole('textbox', { name: 'Your finance question' })
-    fireEvent.change(input, { target: { value: 'Explain investment risk.' } })
-    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
-
-    await expectAnswerVisible()
-    expect(askCalls(fetchMock)).toHaveLength(1)
-  })
-
-  it('shows a pending state and disables duplicate submissions', async () => {
-    let resolveFetch: ((response: Response) => void) | undefined
-    const pendingResponse = new Promise<Response>((resolve) => { resolveFetch = resolve })
-    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
-      if (String(input) !== '/api/source-health') return pendingResponse
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({
-          domains: ['tax', 'investment', 'insurance'].map((domain) => ({
-            domain, active_document_ids: [`${domain}-fixture`], status: 'ready',
-            message: 'Ready.', issues: [],
-          })),
-        }),
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    render(<App />)
-    fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
-      target: { value: 'Explain risk and return.' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
-
-    expect(screen.getByRole('status').textContent).toContain('Routing and checking')
-    expect((screen.getByRole('button', { name: 'Send question' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(askCalls(fetchMock)).toHaveLength(1)
-    resolveFetch?.({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify(askFixture('tax')),
-    } as Response)
-    await expectAnswerVisible()
-  })
-
-  it('keeps previous conversation visible after starting a new chat', async () => {
-    mockFetch(askFixture('tax'))
-    render(<App />)
-    fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), {
-      target: { value: 'What is a tax rebate?' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Send question' }))
-    await expectAnswerVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
-
-    expect(screen.getByText('Make sense of personal finance.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /what is a tax rebate/i }))
-    expect(screen.getAllByText(/Diversification spreads exposure across investments/)
-      .some((element) => element.closest('.answer-copy'))).toBe(true)
-  })
-
-  it('renders safe answer Markdown and opens the matching cited evidence', async () => {
-    const { ChatMessage } = await import('./components/ChatMessage')
-    const response = answerFixture()
-    response.answer = '## Investing\n\n**Diversification** can reduce risk. [S1]\n\n1. Spread exposure\n2. Keep risk in view'
-    response.claim_verifications = [{
-      claim_text: 'Diversification can reduce risk.',
-      status: 'supported',
-      assessment_basis: 'source_text_comparison',
-      evidence_ids: ['S1'],
-      cited_evidence_ids: ['S1'],
-      note: 'Claim wording directly matches text in its cited passage.',
-    }]
-    response.claim_verification_status = 'evidence_supported'
-
-    render(<ChatMessage entry={{
-      id: 'assistant-markdown', role: 'assistant', content: response.answer, domain: 'investment', response,
-    }} />)
-
-    expect(screen.getByRole('heading', { name: 'Answer' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Claim verification' })).toBeTruthy()
-    expect(screen.getByText('Diversification').tagName).toBe('STRONG')
-    expect(document.querySelectorAll('.answer-copy li')).toHaveLength(2)
-    const citation = screen.getAllByRole('link', { name: '[S1]' })[0]
-    expect(citation.getAttribute('href')).toBe('#evidence-S1')
-    fireEvent.click(citation)
-    expect(screen.getByText(/Sources & evidence \(1\)/).closest('details')?.open).toBe(true)
-  })
-
-  it('orders source cards by citation ID and keeps each URL tied to its passage', async () => {
-    const { EvidencePanel } = await import('./components/EvidencePanel')
-    const base = answerFixture().evidence?.[0]
-    if (!base) throw new Error('Fixture evidence is required')
-    const second = {
-      ...base,
-      citation_id: 'S2',
-      passage_id: 'investment:fixture:2',
-      document_id: 'document-second',
-      document_name: 'Second SEBI guide',
-      source: {
-        title: 'Second source title',
-        publisher: 'SEBI Investor',
-        url: 'https://investor.sebi.gov.in/second-source',
-        accessed_on: '2026-10-17',
-      },
-    }
-    const first = {
-      ...base,
-      citation_id: 'S1',
-      passage_id: 'investment:fixture:1',
-      document_name: 'First SEBI guide',
-      source: {
-        title: 'First source title',
-        publisher: 'SEBI Investor',
-        url: 'https://investor.sebi.gov.in/first-source',
-        accessed_on: '2026-10-16',
-      },
-    }
-    const { container } = render(<EvidencePanel evidence={[second, first]} />)
-    fireEvent.click(screen.getByText(/Sources & evidence \(2\)/))
-
-    const cards = Array.from(container.querySelectorAll('.evidence-item'))
-    expect(cards.map((card) => card.id)).toEqual(['evidence-S1', 'evidence-S2'])
-    expect(cards[0].textContent).toContain('First source title')
-    expect(cards[1].querySelector('a')?.getAttribute('href')).toBe(
-      'https://investor.sebi.gov.in/second-source',
-    )
-    expect(cards[0].textContent).toContain('Retrieved 2026-10-16')
-  })
-
-  it('shows a source-date warning beside the answer instead of hiding it in collapsed limitations', async () => {
-    const { ChatMessage } = await import('./components/ChatMessage')
-    const response = answerFixture('tax')
-    response.limitations = [
-      'Selected source text was retrieved on 2020-01-01, not the requested applicable date 2026-10-15; check current official guidance.',
-    ]
-
-    render(<ChatMessage entry={{
-      id: 'assistant-stale-source', role: 'assistant', content: response.answer, domain: 'tax', response,
-    }} />)
-
-    const warning = screen.getByRole('status')
-    expect(warning.textContent).toContain('2020-01-01')
-    expect(warning.closest('.limitations-details')).toBeNull()
-    expect(screen.getByText(/Sources & evidence/)).toBeTruthy()
-  })
-
-  it('hides empty optional sections and does not render model HTML or unsafe links', async () => {
-    const { ChatMessage } = await import('./components/ChatMessage')
-    const response = answerFixture()
-    response.answer = '<script>window.compromised = true</script>\n\n[unsafe](javascript:alert(1))'
-    response.limitations = ['', '   ']
-    if (response.evidence?.[0]) response.evidence[0].source.url = 'javascript:alert(1)'
-    response.claim_verifications = undefined
-    response.claim_verification_status = undefined
-    response.claim_verification_note = undefined
-
-    const { container } = render(<ChatMessage entry={{
-      id: 'assistant-safe', role: 'assistant', content: response.answer, domain: 'investment', response,
-    }} />)
-
-    expect(container.querySelector('script')).toBeNull()
-    expect(container.querySelector('a[href^="javascript:"]')).toBeNull()
-    expect(container.querySelector('.limitations-details')).toBeNull()
-    expect(container.querySelector('.source-link')).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Claim verification' })).toBeNull()
-  })
-
-  it('labels unavailable source grounding without implying evidence was used', async () => {
-    const { ChatMessage } = await import('./components/ChatMessage')
-    const response = answerFixture('tax')
-    response.answer = 'The active source does not contain the requested rates.'
-    response.evidence = []
-    response.source_grounding_supported = false
-    response.source_grounding_note = 'No relevant local passage matched the question.'
-
-    render(<ChatMessage entry={{
-      id: 'assistant-no-evidence', role: 'assistant', content: response.answer, response,
-    }} />)
-
-    expect(screen.getByText('Source grounding unavailable')).toBeTruthy()
-    expect(screen.getByText('No relevant local passage matched the question.')).toBeTruthy()
-    expect(screen.queryByText('Sources & evidence (0)')).toBeNull()
-  })
-
-  it('shows source-content and timeout errors clearly for expert results', async () => {
-    const { AskResponsePanel } = await import('./components/AskResponsePanel')
-    const response = askFixture('insurance')
-    response.experts[0].status = 'error'
-    response.experts[0].error = 'Source content unavailable: the insurance text is missing.'
-    const view = render(<AskResponsePanel response={response} />)
-    expect(screen.getByRole('status').textContent).toBe(
-      'Source content unavailable: the insurance text is missing.',
-    )
-
-    view.rerender(<AskResponsePanel response={{
-      ...response,
-      experts: [{ ...response.experts[0], error: 'The request timed out after 45 seconds.' }],
-    }} />)
-    expect(screen.getByRole('status').textContent).toBe(
-      'Expert timed out. The request timed out after 45 seconds.',
-    )
-  })
-
-  it('labels a validated answer distinctly', async () => {
-    const { AskResponsePanel } = await import('./components/AskResponsePanel')
-    render(<AskResponsePanel response={askFixture()} />)
-
-    expect(screen.getAllByText('Validated answer').length).toBeGreaterThan(0)
-    expect(screen.queryByText('No supporting passage found')).toBeNull()
-  })
-
-  it('labels an empty retrieval as no supporting passage found', async () => {
-    const { AskResponsePanel } = await import('./components/AskResponsePanel')
+  it('keeps Details closed by default and reveals technical answer information on demand', async () => {
     const response = askFixture()
-    response.final_answer = 'No supporting passage found.'
-    response.final_answer_state = 'no_passages'
-    response.final_answer_source_grounding_supported = false
-    response.final_answer_source_grounding_note = 'No supporting source passage was retrieved.'
-    response.final_excerpt_source_ids = []
-    response.sources = []
-    response.experts[0].answer_state = 'no_passages'
-    response.experts[0].evidence = []
+    response.gaps = ['', '   ']
+    response.experts[0].limitations = ['', '  ']
+    installFetch(response)
+    const { container } = render(<App />)
+    sendQuestion()
+    await screen.findByText('Validated')
 
-    render(<AskResponsePanel response={response} />)
+    const disclosure = screen.getByText('How this answer was made').closest('details')
+    expect(disclosure?.open).toBe(false)
+    expect(screen.getByText('fixture-base-model').closest('details')?.open).toBe(false)
+    expect(Array.from(container.querySelectorAll('li')).every((item) => item.textContent?.trim())).toBe(true)
 
-    expect(screen.getAllByText('No supporting passage found').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Sources found; summary could not be validated')).toBeNull()
+    fireEvent.click(screen.getByText('How this answer was made'))
+    expect(disclosure?.open).toBe(true)
+    expect(screen.getByText('fixture-base-model')).not.toBeNull()
+    expect(screen.getByText('Not independently verified')).not.toBeNull()
+    expect(screen.queryByText(/Per-claim results/)).toBeNull()
+    expect(Array.from(container.querySelectorAll('li')).every((item) => item.textContent?.trim())).toBe(true)
   })
 
-  it('shows retrieved excerpts prominently when generated wording is withheld and escapes excerpt text', async () => {
-    const { AskResponsePanel } = await import('./components/AskResponsePanel')
+  it('uses only the backend alignment status for each expert badge', async () => {
     const response = askFixture('tax')
-    response.final_answer = 'Source excerpts (no generated summary)'
-    response.final_answer_state = 'withheld'
-    response.final_answer_source_grounding_supported = false
-    response.final_answer_source_grounding_note = 'Sources were found, but generated wording did not validate.'
-    response.final_excerpt_source_ids = ['S1']
-    response.sources[0].excerpt = '<script>alert("source")</script>Slab rates apply by band.'
-    response.sources[0].section_heading = 'Individual income-tax slabs'
+    response.experts[0].model_mode = 'aligned'
+    response.experts[0].alignment_status = 'unaligned'
+    installFetch(response)
+    const { container } = render(<App />)
+    sendQuestion()
+    await screen.findByText('Validated')
+    expect(screen.getByText('Base model')).not.toBeNull()
+    expect(screen.queryByText('Aligned expert')).toBeNull()
 
-    const { container } = render(<AskResponsePanel response={response} />)
+    const aligned = askFixture('tax')
+    aligned.experts[0].alignment_status = 'aligned'
+    installFetch(aligned)
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
+    sendQuestion('What is a tax slab?')
+    await waitFor(() => expect(screen.getByText('Aligned expert')).not.toBeNull())
+    expect(container.querySelectorAll('.answer-copy')).toHaveLength(1)
+  })
 
-    expect(screen.getByText('Sources found; summary could not be validated')).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Source excerpts (no generated summary)' })).toBeTruthy()
-    expect(screen.getByText('Individual income-tax slabs')).toBeTruthy()
-    expect(container.querySelector('.final-source-excerpt > p')?.textContent).toBe(
-      '<script>alert("source")</script>Slab rates apply by band.',
+  it('shows a short consulted line for cross-domain answers and one final answer', async () => {
+    const response = askFixture('tax')
+    const investmentSource = sourceFixture('investment', 'S2')
+    response.routing.experts = ['tax', 'investment']
+    response.routing.reason = 'This question spans tax treatment and investing.'
+    response.experts.push(expertFixture('investment', investmentSource))
+    response.sources.push(investmentSource)
+    installFetch(response)
+    const { container } = render(<App />)
+    sendQuestion('Should I choose ELSS or NPS?')
+    await screen.findByText('Validated')
+
+    expect(screen.getByText('Consulted: Tax, Investment')).not.toBeNull()
+    expect(container.querySelectorAll('.answer-copy')).toHaveLength(1)
+    expect(screen.queryByText('How this answer was made')?.closest('details')?.open).toBe(false)
+  })
+
+  it('shows the first three sources and expands the clean source list on request', async () => {
+    const response = askFixture()
+    response.sources.push(
+      sourceFixture('investment', 'S2'),
+      sourceFixture('investment', 'S3'),
+      sourceFixture('investment', 'S4'),
     )
-    expect(container.querySelector('script')).toBeNull()
-    expect(screen.getAllByText('Sources & evidence (1)').length).toBeGreaterThan(0)
+    installFetch(response)
+    const { container } = render(<App />)
+    sendQuestion()
+    await screen.findByText('Validated')
+
+    expect(container.querySelectorAll('.source-card')).toHaveLength(3)
+    fireEvent.click(screen.getByRole('button', { name: 'Show all (4)' }))
+    expect(container.querySelectorAll('.source-card')).toHaveLength(4)
+    fireEvent.click(screen.getByRole('button', { name: 'Show fewer' }))
+    expect(container.querySelectorAll('.source-card')).toHaveLength(3)
+  })
+
+  it.each(['http://localhost:8000/source', 'http://127.0.0.1/source', 'http://[::1]/source'])(
+    'does not expose a local source URL: %s',
+    async (url) => {
+      const response = askFixture()
+      response.sources[0].source.url = url
+      installFetch(response)
+      render(<App />)
+      sendQuestion()
+      await screen.findByText('Validated')
+      expect(screen.queryByRole('link', { name: /Open source/ })).toBeNull()
+      expect(document.querySelector('.answer-copy a.markdown-citation')?.getAttribute('href')).toBe('#evidence-S1')
+    },
+  )
+
+  it('shows the withheld-summary state and keeps retrieved source excerpts readable', async () => {
+    const response = askFixture('tax')
+    response.final_answer_state = 'withheld'
+    response.final_answer = 'Source excerpts (no generated summary)'
+    response.final_answer_source_grounding_supported = false
+    response.final_excerpt_source_ids = ['S1']
+    response.sources[0].excerpt = '<b>Slab rates</b> apply by income band and tax regime.'
+    response.gaps = ['Generated wording failed citation validation.']
+    installFetch(response)
+    const { container } = render(<App />)
+    sendQuestion('How do tax slabs work?')
+
+    expect(await screen.findByText("Sources found; summary couldn't be validated")).not.toBeNull()
+    expect(screen.getByText('Source excerpts (no generated summary)')).not.toBeNull()
+    expect(screen.getByText('<b>Slab rates</b> apply by income band and tax regime.')).not.toBeNull()
+    expect(container.querySelector('b')).toBeNull()
+    expect(container.querySelectorAll('.answer-copy')).toHaveLength(0)
+  })
+
+  it('shows the no-source state without rendering an empty source list', async () => {
+    const response = askFixture('tax')
+    response.final_answer_state = 'no_passages'
+    response.final_answer = 'No relevant source found.'
+    response.final_answer_source_grounding_supported = false
+    response.sources = []
+    response.experts[0].evidence = []
+    response.experts[0].answer_state = 'no_passages'
+    response.experts[0].answer = 'No relevant source found.'
+    response.experts[0].source_grounding_supported = false
+    response.experts[0].claim_verifications = []
+    installFetch(response)
+    render(<App />)
+    sendQuestion('Question with no source coverage')
+
+    expect(await screen.findByText('No relevant source found')).not.toBeNull()
+    expect(screen.getByText('No relevant source was found for this question.')).not.toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Sources' })).toBeNull()
+  })
+
+  it('offers four example questions that submit immediately', async () => {
+    const fetchMock = installFetch(askFixture())
+    render(<App />)
+    const examples = [
+      'How do income tax slabs work for individuals?',
+      'What is a SIP?',
+      'What is the difference between saving and investing?',
+      'Should I choose ELSS or NPS to save tax?',
+    ]
+    for (const question of examples) {
+      expect(screen.getByRole('button', { name: question })).not.toBeNull()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'What is a SIP?' }))
+    await screen.findByText('Validated')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ question: 'What is a SIP?' })
+  })
+
+  it.each([
+    [429, 'FinPilot is busy right now.'],
+    [503, 'FinPilot is temporarily unavailable.'],
+    [504, 'This request took too long.'],
+  ])('shows a friendly retryable error for HTTP %s', async (status, message) => {
+    installFetch({ detail: 'private traceback details' }, status)
+    render(<App />)
+    sendQuestion()
+    expect((await screen.findByRole('alert')).textContent).toContain(message)
+    expect(screen.getByRole('button', { name: 'Try again' })).not.toBeNull()
+    expect(screen.queryByText('private traceback details')).toBeNull()
+  })
+
+  it('shows a friendly network error and allows retry', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network internals')))
+    render(<App />)
+    sendQuestion()
+    expect((await screen.findByRole('alert')).textContent).toContain('FinPilot could not be reached')
+    expect(screen.getByRole('button', { name: 'Try again' })).not.toBeNull()
+    expect(screen.queryByText('network internals')).toBeNull()
+  })
+
+  it('shows elapsed loading time, a slow note, and disables the composer', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => undefined)))
+    render(<App />)
+    sendQuestion()
+    expect(screen.getByRole('status').textContent).toContain('Finding sources... 0 seconds')
+    expect((screen.getByRole('button', { name: 'Send question' }) as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(21_000) })
+    expect(screen.getByText('This is taking longer than usual.')).not.toBeNull()
+  })
+
+  it('supports Cmd+Enter, Advanced selection, and New chat', async () => {
+    const fetchMock = installFetch(askFixture('investment'))
+    render(<App />)
+    const advanced = screen.getByText('Advanced').closest('details')
+    expect(advanced?.open).toBe(false)
+    fireEvent.click(screen.getByText('Advanced'))
+    fireEvent.click(screen.getByLabelText('Investment'))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your finance question' }), { target: { value: 'What is a SIP?' } })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Your finance question' }), { key: 'Enter', metaKey: true })
+    await screen.findByText('Validated')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ question: 'What is a SIP?', experts: ['investment'] })
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
+    expect(screen.getByRole('heading', { name: 'Finance, made clearer.' })).not.toBeNull()
   })
 })
