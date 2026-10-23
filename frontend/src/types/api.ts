@@ -1,6 +1,6 @@
 export type Domain = 'tax' | 'investment' | 'insurance'
 export type AnswerState = 'validated' | 'no_passages' | 'withheld'
-export type FinalAnswerState = AnswerState | 'out_of_scope'
+export type FinalAnswerState = AnswerState | 'out_of_scope' | 'conversational' | 'clarification'
 export type AnswerMode = 'generated' | 'extractive' | 'none'
 export type FinalAnswerMode = 'generated' | 'extractive' | 'mixed' | 'none'
 export type ModelMode = 'aligned' | 'base_fallback' | 'base_fallback_after_validation_failure'

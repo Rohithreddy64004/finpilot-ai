@@ -224,7 +224,7 @@ async def test_ask_skips_router_and_synthesis_for_one_explicit_expert(
 
 @pytest.mark.parametrize(
     "question",
-    ["hi", "thanks", "what's the weather in Hyderabad?"],
+    ["what's the weather in Hyderabad?"],
 )
 @pytest.mark.asyncio
 async def test_ask_out_of_scope_does_not_call_any_expert_or_inference(
@@ -267,6 +267,90 @@ async def test_ask_out_of_scope_does_not_call_any_expert_or_inference(
     )
     assert "no relevant source" not in payload["final_answer"].casefold()
     assert payload["latency_ms"]["experts_ms"] == 0
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_state"),
+    [
+        ("Hi!", "conversational"),
+        ("Thanks!", "conversational"),
+        ("What's up?", "conversational"),
+        ("How's it going?", "conversational"),
+        ("See you later", "conversational"),
+        ("I appreciate it", "conversational"),
+        ("Please", "conversational"),
+        ("Who are you?", "conversational"),
+        ("What can I ask?", "conversational"),
+        ("Hi, can you help me?", "conversational"),
+        ("What is the capital of France?", "out_of_scope"),
+        ("Tell me more", "clarification"),
+        ("Apple", "clarification"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_conversation_responses_skip_routing_retrieval_and_verification(
+    question: str,
+    expected_state: str,
+    monkeypatch: pytest.MonkeyPatch,
+    install_ask_dependencies,
+) -> None:
+    async def should_not_call(*args: Any, **kwargs: Any):
+        raise AssertionError("deterministic conversation handling called an expert or model")
+
+    monkeypatch.setattr(ask_api, "route", should_not_call)
+    monkeypatch.setattr(ask_api, "run_domain_inference", should_not_call)
+    monkeypatch.setattr(ask_api, "get_claim_verifier", should_not_call)
+
+    response = await post_ask({"question": question})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["final_answer_state"] == expected_state
+    assert payload["final_answer"]
+    assert payload["experts"] == []
+    assert payload["sources"] == []
+    assert "no relevant source" not in payload["final_answer"].casefold()
+    assert app.dependency_overrides[get_interaction_repository]().queries == {}
+
+
+@pytest.mark.parametrize(
+    ("question", "domain"),
+    [
+        ("Hi, what is a SIP?", "investment"),
+        ("Thanks, now explain tax slabs", "tax"),
+        ("Hello, explain health insurance", "insurance"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_social_prefix_does_not_swallow_a_finance_question(
+    question: str,
+    domain: str,
+    monkeypatch: pytest.MonkeyPatch,
+    install_ask_dependencies,
+) -> None:
+    route_calls: list[str] = []
+
+    async def fake_route(actual_question: str, **_: Any) -> RouterDecision:
+        route_calls.append(actual_question)
+        return RouterDecision(
+            experts=[domain],
+            reason=f"Finance question routed to {domain}.",
+            routing_method="model",
+        )
+
+    async def fake_run(request, **_: Any):
+        return domain_response(request.domain)
+
+    monkeypatch.setattr(ask_api, "route", fake_route)
+    monkeypatch.setattr(ask_api, "run_domain_inference", fake_run)
+
+    response = await post_ask({"question": question})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert route_calls == [question]
+    assert payload["routing"]["experts"] == [domain]
+    assert payload["final_answer_state"] == "validated"
 
 
 @pytest.mark.asyncio

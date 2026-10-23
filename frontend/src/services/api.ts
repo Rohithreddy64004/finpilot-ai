@@ -88,7 +88,8 @@ function parseAnswerState(value: unknown): AnswerState {
 }
 
 function parseFinalAnswerState(value: unknown): FinalAnswerState {
-  if (value !== 'validated' && value !== 'no_passages' && value !== 'withheld' && value !== 'out_of_scope') {
+  if (value !== 'validated' && value !== 'no_passages' && value !== 'withheld' &&
+      value !== 'out_of_scope' && value !== 'conversational' && value !== 'clarification') {
     throw new ApiError('The backend returned an unknown final answer state.')
   }
   return value

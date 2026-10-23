@@ -46,11 +46,15 @@ export function AskResponsePanel({ response, onFeedback, onExampleQuestion }: As
       : 'Source retrieval dates are unavailable. Check current official guidance for time-sensitive rules.')
   }
 
-  if (response.final_answer_state === 'out_of_scope') {
+  if (response.final_answer_state === 'out_of_scope' ||
+      response.final_answer_state === 'conversational' ||
+      response.final_answer_state === 'clarification') {
     return (
-      <section className="answer-card out-of-scope-card" aria-label="Out of scope response">
+      <section className="answer-card out-of-scope-card" aria-label="FinPilot response">
         <p className="out-of-scope-message" role="status">{response.final_answer}</p>
-        <ExampleQuestions onSelect={(question) => onExampleQuestion?.(question)} />
+        {response.final_answer_state === 'out_of_scope' && (
+          <ExampleQuestions onSelect={(question) => onExampleQuestion?.(question)} />
+        )}
       </section>
     )
   }
@@ -177,6 +181,8 @@ function answerStateLabel(state: AskResponse['final_answer_state']): string {
   if (state === 'validated') return 'Validated'
   if (state === 'withheld') return "Sources found; summary couldn't be validated"
   if (state === 'out_of_scope') return 'Out of scope'
+  if (state === 'conversational') return 'Conversation'
+  if (state === 'clarification') return 'Clarification needed'
   return 'No relevant source found'
 }
 

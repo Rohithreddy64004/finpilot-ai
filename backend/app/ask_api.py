@@ -32,7 +32,8 @@ from backend.app.nugen.claim_verifier import NugenClaimVerifier
 from backend.app.nugen.client import NugenClient
 from backend.app.nugen.errors import NugenAPIError, NugenConfigurationError
 from backend.app.rate_limit import enforce_api_rate_limit
-from backend.app.router import RouterDecision, route
+from backend.app.conversation import classify_conversation
+from backend.app.router import RouterDecision, has_deterministic_finance_terms, route
 from backend.app.schemas import (
     AskExpertResult,
     AskRequest,
@@ -270,6 +271,34 @@ async def ask_question(
     total_started = time.perf_counter()
     request_id = uuid4().hex
     if request.experts is None:
+        conversation = (
+            classify_conversation(request.question)
+            if not has_deterministic_finance_terms(request.question)
+            else None
+        )
+        if conversation is not None:
+            return AskResponse(
+                request_id=request_id,
+                question=request.question,
+                routing=AskRoutingDecision(
+                    experts=[],
+                    reason=f"Deterministic conversation handling: {conversation.intent}.",
+                    routing_method="fallback",
+                ),
+                experts=[],
+                final_answer=conversation.answer,
+                final_answer_state=conversation.state,
+                final_answer_mode="none",
+                final_excerpt_source_ids=[],
+                sources=[],
+                gaps=[],
+                latency_ms=AskStageLatency(
+                    routing_ms=0,
+                    experts_ms=0,
+                    synthesis_ms=0,
+                    total_ms=round((time.perf_counter() - total_started) * 1000),
+                ),
+            )
         route_started = time.perf_counter()
         routing: RouterDecision = await route(
             request.question,

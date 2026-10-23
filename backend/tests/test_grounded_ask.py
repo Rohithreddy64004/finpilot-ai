@@ -258,4 +258,7 @@ async def test_mocked_ask_uses_committed_active_corpora_and_returns_real_referen
         assert payload["final_answer_state"] == "out_of_scope"
         assert client.base_model_list_calls == 0
         assert client.completion_requests == []
-    assert interactions.queries
+    if expected_experts:
+        assert interactions.queries
+    else:
+        assert interactions.queries == []

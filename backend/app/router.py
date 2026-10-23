@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from backend.app.config import Settings, get_settings
+from backend.app.conversation import classify_conversation
 from backend.app.inference_api import _find_base_model
 from backend.app.nugen.client import NugenClient
 from backend.app.nugen.errors import NugenAPIError, NugenConfigurationError
@@ -20,13 +21,6 @@ from backend.app.schemas import ExpertName
 
 _EXAMPLES_PATH = Path(__file__).resolve().parents[2] / "eval" / "router_examples.json"
 _EXPERT_ORDER: tuple[ExpertName, ...] = ("tax", "investment", "insurance")
-_GREETING_RE = re.compile(
-    r"^(?:hi|hello|hey|hiya|thanks|thank you|thx|good morning|good afternoon|good evening|bye)[!.?, ]*$",
-    re.IGNORECASE,
-)
-_WEATHER_RE = re.compile(r"\b(?:weather|forecast|temperature|rain|rainy|snow|humidity)\b", re.IGNORECASE)
-
-
 class RouterDecision(BaseModel):
     """Validated routing result; an empty expert list means out of scope."""
 
@@ -131,6 +125,11 @@ def _deterministic_domains(question: str) -> list[ExpertName]:
     return selected
 
 
+def has_deterministic_finance_terms(question: str) -> bool:
+    """Expose the keyword guard so conversational handling cannot swallow finance questions."""
+    return bool(_deterministic_domains(question))
+
+
 def _apply_deterministic_domains(decision: RouterDecision, question: str) -> RouterDecision:
     required = _deterministic_domains(question)
     if not required:
@@ -227,12 +226,11 @@ async def route(
 ) -> RouterDecision:
     """Skip obvious non-finance inputs, then use the verified router or keyword fallback."""
 
-    if not _deterministic_domains(question) and (
-        _GREETING_RE.fullmatch(question.strip()) or _WEATHER_RE.search(question)
-    ):
+    conversation = classify_conversation(question) if not _deterministic_domains(question) else None
+    if conversation is not None:
         return RouterDecision(
             experts=[],
-            reason="Out of scope: greetings and weather are outside the finance education topics.",
+            reason=f"Out of scope: deterministic {conversation.intent} handling selected no finance expert.",
             routing_method="fallback",
         )
 

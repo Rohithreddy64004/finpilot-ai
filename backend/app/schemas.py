@@ -10,7 +10,9 @@ ExpertName = Literal["tax", "investment", "insurance"]
 AlignmentStatus = Literal["aligned", "unaligned"]
 ModelMode = Literal["aligned", "base_fallback", "base_fallback_after_validation_failure"]
 AnswerState = Literal["validated", "no_passages", "withheld"]
-FinalAnswerState = Literal["validated", "no_passages", "withheld", "out_of_scope"]
+FinalAnswerState = Literal[
+    "validated", "no_passages", "withheld", "out_of_scope", "conversational", "clarification"
+]
 AnswerMode = Literal["generated", "extractive", "none"]
 FinalAnswerMode = Literal["generated", "extractive", "mixed", "none"]
 ClaimStatus = Literal["supported", "contradicted", "unverified"]

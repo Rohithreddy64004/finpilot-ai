@@ -210,3 +210,19 @@ async def test_finance_question_with_greeting_is_not_out_of_scope() -> None:
 
     assert result.experts == ["tax"]
     assert client.completion_calls
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["How are you?", "See you later", "I appreciate it", "Who are you?", "Tell me more"],
+)
+@pytest.mark.asyncio
+async def test_conversational_and_ambiguous_routes_do_not_call_model(question: str) -> None:
+    client = FakeNugenClient()
+    settings = Settings(_env_file=None, nugen_api_key="test-only-key", nugen_test_model_id="routing-base")
+
+    result = await route(question, client=client, settings=settings)
+
+    assert result.experts == []
+    assert client.list_calls == []
+    assert client.completion_calls == []

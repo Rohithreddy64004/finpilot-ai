@@ -325,6 +325,32 @@ describe('FinPilot answer view', () => {
   })
 
   it.each([
+    ['conversational', "I'm doing well, thanks for asking!"],
+    ['clarification', "Could you clarify what you'd like to know?"],
+  ] as const)('renders the %s response as plain conversation', async (state, answer) => {
+    const response = askFixture()
+    response.routing.experts = []
+    response.experts = []
+    response.sources = []
+    response.final_answer = answer
+    response.final_answer_state = state
+    response.final_answer_mode = 'none'
+    response.final_answer_source_grounding_supported = false
+    installFetch(response)
+    render(<App />)
+    sendQuestion('How are you?')
+
+    expect(await screen.findByText(answer)).not.toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText('Aligned expert')).toBeNull()
+    expect(screen.queryByText('Base model')).toBeNull()
+    expect(screen.queryByText('Validated')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Sources' })).toBeNull()
+    expect(screen.queryByText('How this answer was made')).toBeNull()
+    expect(screen.queryByText('No relevant source was found for this question.')).toBeNull()
+  })
+
+  it.each([
     [429, 'FinPilot is busy right now.'],
     [503, 'FinPilot is temporarily unavailable.'],
     [504, 'This request took too long.'],
