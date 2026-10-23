@@ -7,6 +7,7 @@ import type {
   ClaimVerification,
   ClaimVerificationSummaryStatus,
   Domain,
+  FinalAnswerState,
   FeedbackResponse,
   InferenceRequest,
   InferenceResponse,
@@ -82,6 +83,13 @@ function parseEvidence(value: unknown): RetrievedEvidence {
 function parseAnswerState(value: unknown): AnswerState {
   if (value !== 'validated' && value !== 'no_passages' && value !== 'withheld') {
     throw new ApiError('The backend returned an unknown answer state.')
+  }
+  return value
+}
+
+function parseFinalAnswerState(value: unknown): FinalAnswerState {
+  if (value !== 'validated' && value !== 'no_passages' && value !== 'withheld' && value !== 'out_of_scope') {
+    throw new ApiError('The backend returned an unknown final answer state.')
   }
   return value
 }
@@ -472,7 +480,7 @@ export function parseAskResponse(value: unknown): AskResponse {
     throw new ApiError('The backend returned duplicate source citation IDs.')
   }
   const knownIds = new Set(sourceIds)
-  const finalAnswerState = parseAnswerState(value.final_answer_state)
+  const finalAnswerState = parseFinalAnswerState(value.final_answer_state)
   const finalAnswerMode = parseFinalAnswerMode(value.final_answer_mode)
   const finalExcerptSourceIds = parseStringList(value.final_excerpt_source_ids, 'final excerpt source ID')
   if (new Set(finalExcerptSourceIds).size !== finalExcerptSourceIds.length ||

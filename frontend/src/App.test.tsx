@@ -295,6 +295,35 @@ describe('FinPilot answer view', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ question: 'What is a SIP?' })
   })
 
+  it('shows out-of-scope guidance and examples without source or trust details', async () => {
+    const response = askFixture()
+    response.routing.experts = []
+    response.experts = []
+    response.sources = []
+    response.final_answer = 'I can help with Indian tax, investing, and insurance questions. Try asking about income tax slabs, the difference between saving and investing, or how health insurance waiting periods work.'
+    response.final_answer_state = 'out_of_scope'
+    response.final_answer_mode = 'none'
+    response.final_answer_source_grounding_supported = false
+    const fetchMock = installFetch(response)
+    render(<App />)
+    sendQuestion('hi')
+
+    expect(await screen.findByText(response.final_answer)).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'How do income tax slabs work for individuals?' })).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'What is a SIP?' })).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'What is the difference between saving and investing?' })).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Should I choose ELSS or NPS to save tax?' })).not.toBeNull()
+    expect(screen.queryByText('Aligned expert')).toBeNull()
+    expect(screen.queryByText('Base model')).toBeNull()
+    expect(screen.queryByText('Validated')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Sources' })).toBeNull()
+    expect(screen.queryByText('How this answer was made')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'What is a SIP?' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ question: 'What is a SIP?' })
+  })
+
   it.each([
     [429, 'FinPilot is busy right now.'],
     [503, 'FinPilot is temporarily unavailable.'],

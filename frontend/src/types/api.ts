@@ -1,5 +1,6 @@
 export type Domain = 'tax' | 'investment' | 'insurance'
 export type AnswerState = 'validated' | 'no_passages' | 'withheld'
+export type FinalAnswerState = AnswerState | 'out_of_scope'
 export type AnswerMode = 'generated' | 'extractive' | 'none'
 export type FinalAnswerMode = 'generated' | 'extractive' | 'mixed' | 'none'
 export type ModelMode = 'aligned' | 'base_fallback' | 'base_fallback_after_validation_failure'
@@ -123,7 +124,7 @@ export interface AskResponse {
   }
   experts: AskExpertResult[]
   final_answer: string
-  final_answer_state: AnswerState
+  final_answer_state: FinalAnswerState
   final_answer_mode: FinalAnswerMode
   final_excerpt_source_ids: string[]
   final_answer_source_grounding_supported: boolean

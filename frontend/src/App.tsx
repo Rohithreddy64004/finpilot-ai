@@ -2,18 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { ChatInput } from './components/ChatInput'
 import { ChatMessage } from './components/ChatMessage'
+import { exampleQuestions } from './components/exampleQuestionList'
 import { Sidebar } from './components/Sidebar'
 import { ApiError, requestAsk, requestFeedback } from './services/api'
 import type { ChatEntry } from './types/chat'
 import type { Domain } from './types/api'
 import './App.css'
-
-const exampleQuestions = [
-  'How do income tax slabs work for individuals?',
-  'What is a SIP?',
-  'What is the difference between saving and investing?',
-  'Should I choose ELSS or NPS to save tax?',
-]
 
 let nextLocalId = 0
 function createId(): string {
@@ -204,6 +198,7 @@ function App() {
                         : undefined}
                       retryDisabled={isSubmitting}
                       onFeedback={sendFeedback}
+                      onExampleQuestion={(question) => { void submitQuestion(question) }}
                     />
                   ))}
                   <div ref={newestMessageRef} aria-hidden="true" />

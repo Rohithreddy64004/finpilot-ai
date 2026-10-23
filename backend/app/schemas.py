@@ -10,6 +10,7 @@ ExpertName = Literal["tax", "investment", "insurance"]
 AlignmentStatus = Literal["aligned", "unaligned"]
 ModelMode = Literal["aligned", "base_fallback", "base_fallback_after_validation_failure"]
 AnswerState = Literal["validated", "no_passages", "withheld"]
+FinalAnswerState = Literal["validated", "no_passages", "withheld", "out_of_scope"]
 AnswerMode = Literal["generated", "extractive", "none"]
 FinalAnswerMode = Literal["generated", "extractive", "mixed", "none"]
 ClaimStatus = Literal["supported", "contradicted", "unverified"]
@@ -297,7 +298,7 @@ class AskResponse(BaseModel):
     routing: AskRoutingDecision
     experts: list[AskExpertResult]
     final_answer: str = Field(min_length=1)
-    final_answer_state: AnswerState = "validated"
+    final_answer_state: FinalAnswerState = "validated"
     final_answer_mode: FinalAnswerMode = "none"
     final_excerpt_source_ids: list[str] = Field(default_factory=list)
     final_answer_source_grounding_supported: bool = False

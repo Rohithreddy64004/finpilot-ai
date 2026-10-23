@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import type { AskExpertResult, AskResponse, ClaimVerification, Domain } from '../types/api'
 import { MarkdownContent } from './MarkdownContent'
+import { ExampleQuestions } from './ExampleQuestions'
 import { SourceList } from './SourceList'
 import { StatusBadge } from './StatusBadge'
 
@@ -12,9 +13,10 @@ const expertNames: Record<Domain, string> = {
 interface AskResponsePanelProps {
   response: AskResponse
   onFeedback?: (requestId: string, rating: 'up' | 'down') => Promise<void>
+  onExampleQuestion?: (question: string) => void
 }
 
-export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps) {
+export function AskResponsePanel({ response, onFeedback, onExampleQuestion }: AskResponsePanelProps) {
   const [feedback, setFeedback] = useState<'up' | 'down' | 'sent' | 'error' | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const hasMultipleExperts = response.routing.experts.length > 1
@@ -42,6 +44,15 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
     limitations.push(sourceDates.length
       ? `Sources retrieved on ${sourceDates.join(', ')}. Check current official guidance for time-sensitive rules.`
       : 'Source retrieval dates are unavailable. Check current official guidance for time-sensitive rules.')
+  }
+
+  if (response.final_answer_state === 'out_of_scope') {
+    return (
+      <section className="answer-card out-of-scope-card" aria-label="Out of scope response">
+        <p className="out-of-scope-message" role="status">{response.final_answer}</p>
+        <ExampleQuestions onSelect={(question) => onExampleQuestion?.(question)} />
+      </section>
+    )
   }
 
   async function submitFeedback(rating: 'up' | 'down') {
@@ -165,6 +176,7 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
 function answerStateLabel(state: AskResponse['final_answer_state']): string {
   if (state === 'validated') return 'Validated'
   if (state === 'withheld') return "Sources found; summary couldn't be validated"
+  if (state === 'out_of_scope') return 'Out of scope'
   return 'No relevant source found'
 }
 

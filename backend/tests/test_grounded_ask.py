@@ -105,6 +105,7 @@ class MockNugenClient:
 
     def __init__(self) -> None:
         self.completion_requests = []
+        self.base_model_list_calls = 0
         self.document_status_calls: list[str] = []
 
     async def get_document_status(self, document_id: str) -> DocumentStatusResponse:
@@ -112,6 +113,7 @@ class MockNugenClient:
         return DocumentStatusResponse(document_id=document_id, status="READY")
 
     async def list_base_models(self, **_kwargs) -> BaseModelsResponse:
+        self.base_model_list_calls += 1
         return BaseModelsResponse(
             models=[
                 BaseModelSummary(
@@ -253,5 +255,7 @@ async def test_mocked_ask_uses_committed_active_corpora_and_returns_real_referen
         assert payload["experts"] == []
         assert payload["sources"] == []
         assert payload["final_answer_source_grounding_supported"] is False
-        assert len(client.completion_requests) == 1
+        assert payload["final_answer_state"] == "out_of_scope"
+        assert client.base_model_list_calls == 0
+        assert client.completion_requests == []
     assert interactions.queries

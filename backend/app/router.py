@@ -20,6 +20,11 @@ from backend.app.schemas import ExpertName
 
 _EXAMPLES_PATH = Path(__file__).resolve().parents[2] / "eval" / "router_examples.json"
 _EXPERT_ORDER: tuple[ExpertName, ...] = ("tax", "investment", "insurance")
+_GREETING_RE = re.compile(
+    r"^(?:hi|hello|hey|hiya|thanks|thank you|thx|good morning|good afternoon|good evening|bye)[!.?, ]*$",
+    re.IGNORECASE,
+)
+_WEATHER_RE = re.compile(r"\b(?:weather|forecast|temperature|rain|rainy|snow|humidity)\b", re.IGNORECASE)
 
 
 class RouterDecision(BaseModel):
@@ -220,7 +225,16 @@ async def route(
     client: NugenClient | None = None,
     settings: Settings | None = None,
 ) -> RouterDecision:
-    """Use the verified configured base model once, then fail closed to keywords."""
+    """Skip obvious non-finance inputs, then use the verified router or keyword fallback."""
+
+    if not _deterministic_domains(question) and (
+        _GREETING_RE.fullmatch(question.strip()) or _WEATHER_RE.search(question)
+    ):
+        return RouterDecision(
+            experts=[],
+            reason="Out of scope: greetings and weather are outside the finance education topics.",
+            routing_method="fallback",
+        )
 
     runtime_settings = settings or get_settings()
     managed_client = client or NugenClient(runtime_settings)

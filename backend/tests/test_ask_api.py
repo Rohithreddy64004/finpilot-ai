@@ -222,8 +222,13 @@ async def test_ask_skips_router_and_synthesis_for_one_explicit_expert(
     assert saved_query.routing.routing_method == "override"
 
 
+@pytest.mark.parametrize(
+    "question",
+    ["hi", "thanks", "what's the weather in Hyderabad?"],
+)
 @pytest.mark.asyncio
-async def test_ask_out_of_scope_does_not_call_any_expert(
+async def test_ask_out_of_scope_does_not_call_any_expert_or_inference(
+    question: str,
     monkeypatch: pytest.MonkeyPatch,
     install_ask_dependencies,
 ) -> None:
@@ -237,16 +242,30 @@ async def test_ask_out_of_scope_does_not_call_any_expert(
     async def should_not_run(*args: Any, **kwargs: Any):
         raise AssertionError("out-of-scope question called an expert")
 
+    async def should_not_synthesize(*args: Any, **kwargs: Any):
+        raise AssertionError("out-of-scope question called inference")
+
+    def should_not_build_verifier(*args: Any, **kwargs: Any):
+        raise AssertionError("out-of-scope question initialized a claim verifier")
+
     monkeypatch.setattr(ask_api, "route", fake_route)
     monkeypatch.setattr(ask_api, "run_domain_inference", should_not_run)
+    monkeypatch.setattr(ask_api, "synthesize", should_not_synthesize)
+    monkeypatch.setattr(ask_api, "get_claim_verifier", should_not_build_verifier)
 
-    response = await post_ask({"question": "What is tomorrow's weather?"})
+    response = await post_ask({"question": question})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["experts"] == []
     assert payload["sources"] == []
-    assert "out of scope" in payload["final_answer"].casefold()
+    assert payload["final_answer_state"] == "out_of_scope"
+    assert payload["final_answer"] == (
+        "I can help with Indian tax, investing, and insurance questions. Try asking about "
+        "income tax slabs, the difference between saving and investing, or how health "
+        "insurance waiting periods work."
+    )
+    assert "no relevant source" not in payload["final_answer"].casefold()
     assert payload["latency_ms"]["experts_ms"] == 0
 
 

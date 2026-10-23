@@ -316,6 +316,19 @@ describe('multi-expert API', () => {
     expect(parseAskResponse(fixture).final_excerpt_source_ids).toEqual(['S1'])
   })
 
+  it('accepts the out-of-scope final answer state without sources or experts', () => {
+    const fixture = askResponseFixture()
+    fixture.routing.experts = []
+    fixture.experts = []
+    fixture.sources = []
+    fixture.final_answer = 'I can help with Indian tax, investing, and insurance questions.'
+    fixture.final_answer_state = 'out_of_scope'
+    fixture.final_answer_mode = 'none'
+    fixture.final_answer_source_grounding_supported = false
+
+    expect(parseAskResponse(fixture).final_answer_state).toBe('out_of_scope')
+  })
+
   it('posts feedback against the saved query identifier', async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockedResponse({
       id: 'feedback-1',

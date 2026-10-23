@@ -71,6 +71,7 @@
 .markdown-citation { display: inline-flex; min-height: 21px; align-items: center; margin: 0 1px; padding: 0 6px; border: 1px solid #bdd2ed; border-radius: 999px; color: #1d5db8; background: #f0f6ff; font-size: .75em; font-weight: 700; line-height: 1; text-decoration: none; vertical-align: .1em; }
 .markdown-citation:hover { border-color: #83a9db; color: #123f80; background: #e2eeff; }
 .no-source-message { margin: 0; color: #53647c; font-size: 14px; line-height: 1.55; }
+.out-of-scope-message { max-width: 68ch; margin: 0 0 16px; color: #263951; font-size: 15px; line-height: 1.65; }
 .withheld-answer { padding: 13px; border: 1px solid #ead49f; border-radius: 9px; background: #fffaf0; }
 .withheld-message strong { color: #654d17; font-size: 14px; }
 .withheld-message p { margin: 5px 0 0; color: #5c4b27; font-size: 13px; line-height: 1.5; }

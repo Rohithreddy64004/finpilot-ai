@@ -187,12 +187,26 @@ async def test_router_model_missing_or_not_verified_does_not_call_chat_completio
     assert not_ready.completion_calls == []
 
 
+@pytest.mark.parametrize("question", ["hi", "thanks", "what's the weather in Hyderabad?"])
 @pytest.mark.asyncio
-async def test_out_of_scope_model_route_is_empty_and_clear() -> None:
-    client = FakeNugenClient(json.dumps({"experts": [], "reason": "Out of scope: this is a weather question."}))
+async def test_obvious_out_of_scope_questions_skip_model_routing(question: str) -> None:
+    client = FakeNugenClient(json.dumps({"experts": [], "reason": "Out of scope."}))
     settings = Settings(_env_file=None, nugen_api_key="test-only-key", nugen_test_model_id="routing-base")
 
-    result = await route("What is tomorrow's weather?", client=client, settings=settings)
+    result = await route(question, client=client, settings=settings)
 
     assert result.experts == []
     assert "out of scope" in result.reason.casefold()
+    assert client.list_calls == []
+    assert client.completion_calls == []
+
+
+@pytest.mark.asyncio
+async def test_finance_question_with_greeting_is_not_out_of_scope() -> None:
+    client = FakeNugenClient(json.dumps({"experts": ["tax"], "reason": "Income tax question."}))
+    settings = Settings(_env_file=None, nugen_api_key="test-only-key", nugen_test_model_id="routing-base")
+
+    result = await route("hi, how do income tax slabs work?", client=client, settings=settings)
+
+    assert result.experts == ["tax"]
+    assert client.completion_calls

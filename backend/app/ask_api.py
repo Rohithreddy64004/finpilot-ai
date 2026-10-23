@@ -314,8 +314,13 @@ async def ask_question(
             question=request.question,
             routing=routing_payload,
             experts=[],
-            final_answer=routing_payload.reason,
-            final_answer_state="no_passages",
+            final_answer=(
+                "I can help with Indian tax, investing, and insurance questions. Try asking about "
+                "income tax slabs, the difference between saving and investing, or how health "
+                "insurance waiting periods work."
+            ),
+            final_answer_state="out_of_scope",
+            final_answer_mode="none",
             final_excerpt_source_ids=[],
             sources=[],
             gaps=[],

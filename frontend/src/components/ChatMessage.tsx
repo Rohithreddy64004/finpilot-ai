@@ -7,6 +7,7 @@ interface ChatMessageProps {
   elapsedSeconds?: number
   onRetry?: () => void
   onFeedback?: (requestId: string, rating: 'up' | 'down') => Promise<void>
+  onExampleQuestion?: (question: string) => void
   retryDisabled?: boolean
 }
 
@@ -15,6 +16,7 @@ export function ChatMessage({
   elapsedSeconds = 0,
   onRetry,
   onFeedback,
+  onExampleQuestion,
   retryDisabled = false,
 }: ChatMessageProps) {
   if (entry.role === 'user') {
@@ -47,7 +49,7 @@ export function ChatMessage({
             {onRetry && <button className="retry-button" type="button" onClick={onRetry} disabled={retryDisabled}>Try again</button>}
           </div>
         ) : entry.askResponse ? (
-          <AskResponsePanel response={entry.askResponse} onFeedback={onFeedback} />
+          <AskResponsePanel response={entry.askResponse} onFeedback={onFeedback} onExampleQuestion={onExampleQuestion} />
         ) : null}
       </div>
     </article>
