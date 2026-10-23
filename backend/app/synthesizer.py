@@ -84,7 +84,7 @@ async def synthesize(
                 ),
                 NugenMessage(role="user", content=question),
             ],
-            max_tokens=900,
+            max_tokens=500,
             prompt_truncate_len=5_000,
             temperature=0.2,
             stream=False,

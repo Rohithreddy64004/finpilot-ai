@@ -35,6 +35,7 @@ function expertFixture(
     model_mode: mode,
     alignment_status: alignment,
     answer_state: 'validated',
+    answer_mode: 'generated',
     repair_retry_used: false,
     source_grounding_supported: true,
     source_grounding_note: 'Cited source text.',
@@ -64,6 +65,7 @@ function askFixture(domain: Domain = 'investment'): AskResponse {
     experts: [expertFixture(domain, source)],
     final_answer: 'Diversification spreads exposure across investments. [S1]',
     final_answer_state: 'validated',
+    final_answer_mode: 'generated',
     final_excerpt_source_ids: [],
     final_answer_source_grounding_supported: true,
     final_answer_source_grounding_note: 'Every citation maps to a retrieved passage.',
@@ -131,6 +133,24 @@ describe('FinPilot answer view', () => {
     expect(screen.getByText('Not independently verified')).not.toBeNull()
     expect(screen.queryByText(/Per-claim results/)).toBeNull()
     expect(Array.from(container.querySelectorAll('li')).every((item) => item.textContent?.trim())).toBe(true)
+  })
+
+  it('deduplicates limitations and shows one concise retrieval date note', async () => {
+    const response = askFixture()
+    const verboseDate = 'Selected source text was retrieved on 2026-10-17, not the requested applicable date 2026-10-23; it does not independently establish that time-sensitive rules were current on that date. Check current official guidance.'
+    response.gaps = [verboseDate, 'Corpus coverage is limited.', 'Corpus coverage is limited.']
+    response.experts[0].limitations = [verboseDate, '  ', 'Corpus coverage is limited.']
+    installFetch(response)
+    const { container } = render(<App />)
+    sendQuestion()
+    await screen.findByText('Validated')
+    fireEvent.click(screen.getByText('How this answer was made'))
+
+    expect(screen.getByRole('heading', { name: 'Limitations and gaps' })).not.toBeNull()
+    expect(screen.getByText('Sources retrieved on 2026-10-15. Check current official guidance for time-sensitive rules.')).not.toBeNull()
+    expect(screen.getAllByText('Corpus coverage is limited.')).toHaveLength(1)
+    expect(screen.queryByText(verboseDate)).toBeNull()
+    expect(container.querySelectorAll('.details-section h3').length).toBeGreaterThan(0)
   })
 
   it('uses only the backend alignment status for each expert badge', async () => {
@@ -206,6 +226,7 @@ describe('FinPilot answer view', () => {
   it('shows the withheld-summary state and keeps retrieved source excerpts readable', async () => {
     const response = askFixture('tax')
     response.final_answer_state = 'withheld'
+    response.final_answer_mode = 'none'
     response.final_answer = 'Source excerpts (no generated summary)'
     response.final_answer_source_grounding_supported = false
     response.final_excerpt_source_ids = ['S1']
@@ -222,14 +243,29 @@ describe('FinPilot answer view', () => {
     expect(container.querySelectorAll('.answer-copy')).toHaveLength(0)
   })
 
+  it('labels extractive answers as source text in the answer and expert details', async () => {
+    const response = askFixture('tax')
+    response.final_answer_mode = 'extractive'
+    response.experts[0].answer_mode = 'extractive'
+    installFetch(response)
+    render(<App />)
+    sendQuestion('How does a tax slab work?')
+
+    expect(await screen.findAllByText('Extractive summary from sources')).toHaveLength(2)
+    fireEvent.click(screen.getByText('How this answer was made'))
+    expect(screen.getAllByText('Extractive summary from sources').length).toBeGreaterThan(1)
+  })
+
   it('shows the no-source state without rendering an empty source list', async () => {
     const response = askFixture('tax')
     response.final_answer_state = 'no_passages'
+    response.final_answer_mode = 'none'
     response.final_answer = 'No relevant source found.'
     response.final_answer_source_grounding_supported = false
     response.sources = []
     response.experts[0].evidence = []
     response.experts[0].answer_state = 'no_passages'
+    response.experts[0].answer_mode = 'none'
     response.experts[0].answer = 'No relevant source found.'
     response.experts[0].source_grounding_supported = false
     response.experts[0].claim_verifications = []
@@ -288,7 +324,9 @@ describe('FinPilot answer view', () => {
     sendQuestion()
     expect(screen.getByRole('status').textContent).toContain('Finding sources... 0 seconds')
     expect((screen.getByRole('button', { name: 'Send question' }) as HTMLButtonElement).disabled).toBe(true)
-    await act(async () => { await vi.advanceTimersByTimeAsync(21_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(8_000) })
+    expect(screen.getByText('The server may be waking up.')).not.toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(13_000) })
     expect(screen.getByText('This is taking longer than usual.')).not.toBeNull()
   })
 

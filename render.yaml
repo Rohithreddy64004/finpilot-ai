@@ -19,6 +19,8 @@ services:
         sync: false
       - key: NUGEN_INSURANCE_MODEL_ID
         sync: false
+      - key: NUGEN_CLAIM_VERIFIER_MODEL_ID
+        sync: false
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DATABASE

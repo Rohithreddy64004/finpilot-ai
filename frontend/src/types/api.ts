@@ -1,5 +1,7 @@
 export type Domain = 'tax' | 'investment' | 'insurance'
 export type AnswerState = 'validated' | 'no_passages' | 'withheld'
+export type AnswerMode = 'generated' | 'extractive' | 'none'
+export type FinalAnswerMode = 'generated' | 'extractive' | 'mixed' | 'none'
 export type ModelMode = 'aligned' | 'base_fallback' | 'base_fallback_after_validation_failure'
 
 export interface InferenceRequest {
@@ -54,6 +56,7 @@ export interface InferenceResponse {
   alignment_status: 'aligned' | 'unaligned'
   answer: string
   answer_state: AnswerState
+  answer_mode: AnswerMode
   repair_retry_used: boolean
   evidence?: RetrievedEvidence[]
   source_references?: SourceReference[]
@@ -97,6 +100,7 @@ export interface AskExpertResult {
   model_mode: ModelMode | null
   alignment_status: 'aligned' | 'unaligned'
   answer_state: AnswerState
+  answer_mode: AnswerMode
   repair_retry_used: boolean
   source_grounding_supported: boolean
   source_grounding_note: string
@@ -120,6 +124,7 @@ export interface AskResponse {
   experts: AskExpertResult[]
   final_answer: string
   final_answer_state: AnswerState
+  final_answer_mode: FinalAnswerMode
   final_excerpt_source_ids: string[]
   final_answer_source_grounding_supported: boolean
   final_answer_source_grounding_note: string

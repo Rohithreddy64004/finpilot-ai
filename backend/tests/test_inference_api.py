@@ -1,6 +1,8 @@
 from datetime import date, datetime, timezone
 from pathlib import Path
+import re
 from typing import Any, List
+import asyncio
 
 import httpx
 import pytest
@@ -29,6 +31,8 @@ from backend.app.schemas import (
     SourceDocumentRecord,
 )
 from backend.app.inference_api import (
+    _citation_validation_note,
+    _find_base_model,
     get_claim_verifier,
     get_inference_client,
     get_inference_settings,
@@ -181,6 +185,7 @@ class FakeNugenClient:
         self.completion_request: Any = None
         self.completion_requests: list[Any] = []
         self.completion_calls = 0
+        self.base_model_list_calls = 0
 
     async def get_document_status(self, document_id: str) -> DocumentStatusResponse:
         self.status_calls.append(document_id)
@@ -190,6 +195,7 @@ class FakeNugenClient:
         )
 
     async def list_base_models(self, **kwargs: Any) -> BaseModelsResponse:
+        self.base_model_list_calls += 1
         assert kwargs == {
             "inference_ready": True,
             "model_type": "text-generation",
@@ -397,14 +403,48 @@ async def test_inference_uses_selected_domain_and_returns_passage_grounding(
     assert "standard Markdown" in system_message
     assert "Do not repeat generic education or professional-advice disclaimers" in system_message
     assert "Never invent a marker" in system_message
-    assert f"Document ID: {domain}-source" in system_message
+    prompt_body = nugen.completion_request.messages[1].content
+    assert f"Document ID: {domain}-source" in prompt_body
     for other_domain in {"tax", "investment", "insurance"} - {domain}:
-        assert f"Document ID: {other_domain}-source" not in system_message
-    assert nugen.completion_request.messages[1].content == questions[domain]
+        assert f"Document ID: {other_domain}-source" not in prompt_body
+    assert prompt_body.startswith("Numbered source passages:")
+    assert prompt_body.endswith(f"Question:\n{questions[domain]}")
     assert nugen.completion_request.temperature == 0.1
-    assert "Numbered source passages" in system_message
+    assert "Numbered source passages" in prompt_body
     assert nugen.completion_request.messages[0].role == "system"
     assert nugen.completion_request.messages[1].role == "user"
+
+
+@pytest.mark.asyncio
+async def test_base_model_readiness_cache_reduces_mocked_calls_from_three_to_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr("backend.app.inference_api.monotonic", lambda: clock[0])
+
+    # Before the cache, the router and two expert checks each fetched the same first page.
+    before = FakeNugenClient()
+    for _ in range(3):
+        await before.list_base_models(
+            inference_ready=True,
+            model_type="text-generation",
+            limit=100,
+            offset=0,
+        )
+    before_count = before.base_model_list_calls
+    assert before_count == 3
+
+    after = FakeNugenClient()
+    results = await asyncio.gather(
+        *(_find_base_model(after, "fixture-base-model") for _ in range(3))
+    )
+    after_count = after.base_model_list_calls
+    assert all(item is not None for item in results)
+    assert after_count == 1
+
+    clock[0] += 31
+    await _find_base_model(after, "fixture-base-model")
+    assert after.base_model_list_calls == 2
 
 
 @pytest.mark.asyncio
@@ -602,24 +642,28 @@ async def test_tax_slab_draft_with_unsupported_numeric_values_is_withheld() -> N
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["source_grounding_supported"] is False
-    assert payload["claim_verification_status"] == "not_performed"
+    assert payload["source_grounding_supported"] is True
+    assert payload["answer_state"] == "validated"
+    assert payload["answer_mode"] == "extractive"
+    assert payload["claim_verification_status"] == "evidence_supported"
     assert "99%" not in payload["answer"]
     assert "99,99,999" not in payload["answer"]
-    assert "withheld" in payload["answer"]
-    assert "OLD-REGIME ORDINARY SLABS" in payload["evidence"][0]["excerpt"]
+    assert "99%" not in "\n".join(item["excerpt"] for item in payload["evidence"])
+    assert "Extractive summary from sources" in payload["limitations"][0]
+    assert any("SLAB" in item["excerpt"].upper() for item in payload["evidence"])
     assert nugen.completion_calls == 1
     system_message = nugen.completion_request.messages[0].content
     assert "Explain progressive taxation" in system_message
     assert "Distinguish assessment year from financial year" in system_message
     assert "preserve every supplied threshold and rate" in system_message
-    assert nugen.completion_request.messages[1].content == (
-        "How do income tax slabs work for individuals?"
-    )
+    assert "Output-format example only" in system_message
+    prompt_body = nugen.completion_request.messages[1].content
+    assert prompt_body.startswith("Numbered source passages:")
+    assert prompt_body.endswith("Question:\nHow do income tax slabs work for individuals?")
 
 
 @pytest.mark.asyncio
-async def test_uncited_tax_slab_response_retains_all_ranked_slab_excerpts() -> None:
+async def test_uncited_tax_slab_response_uses_ranked_verbatim_extracts() -> None:
     nugen = FakeNugenClient()
     nugen.completion_queue = [
         "An answer without a citation.",
@@ -638,14 +682,23 @@ async def test_uncited_tax_slab_response_retains_all_ranked_slab_excerpts() -> N
 
     payload = response.json()
     assert response.status_code == 200
-    assert payload["answer_state"] == "withheld"
+    assert payload["answer_state"] == "validated"
+    assert payload["answer_mode"] == "extractive"
     assert payload["repair_retry_used"] is True
-    assert payload["source_grounding_supported"] is False
-    assert [item["citation_id"] for item in payload["evidence"]] == [
-        "S1", "S2", "S3", "S4", "S5",
-    ]
+    assert payload["source_grounding_supported"] is True
+    assert 2 <= len(re.findall(r"\[S\d+\]", payload["answer"])) <= 3
     assert all(item["section_heading"] for item in payload["evidence"])
     assert "An answer without a citation" not in payload["answer"]
+    for line in payload["answer"].splitlines():
+        if not line.strip():
+            continue
+        marker_match = re.search(r"\[(S[1-9]\d*)\]$", line)
+        assert marker_match is not None, repr(line)
+        marker_id = marker_match.group(1)
+        sentence = line[: marker_match.start()].rstrip()
+        assert marker_id in {item["citation_id"] for item in payload["evidence"]}
+        assert line.endswith(f"[{marker_id}]")
+        assert any(sentence in item["excerpt"] for item in payload["evidence"])
 
 
 @pytest.mark.asyncio
@@ -766,7 +819,7 @@ async def test_registered_document_without_a_matching_local_copy_is_unavailable(
         "A systematic investment plan guarantees a 20% annual return.",
     ],
 )
-async def test_unsupported_model_output_is_withheld(
+async def test_unsupported_model_output_is_replaced_by_extractive_source_text(
     completion_text: str,
 ) -> None:
     nugen = FakeNugenClient()
@@ -784,9 +837,11 @@ async def test_unsupported_model_output_is_withheld(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["source_grounding_supported"] is False
+    assert payload["source_grounding_supported"] is True
+    assert payload["answer_state"] == "validated"
+    assert payload["answer_mode"] == "extractive"
     assert completion_text.split(" [S9]")[0] not in payload["answer"]
-    assert "could not be validated" in payload["answer"]
+    assert payload["repair_retry_used"] is True
     assert payload["evidence"][0]["source"]["url"].startswith(
         "https://investor.sebi.gov.in/"
     )
@@ -825,11 +880,11 @@ async def test_citation_failure_notes_distinguish_missing_malformed_and_unknown(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["source_grounding_supported"] is False
-    assert expected_note in payload["source_grounding_note"]
-    assert completion_text not in payload["source_grounding_note"]
+    assert payload["source_grounding_supported"] is True
+    assert payload["answer_state"] == "validated"
+    assert payload["answer_mode"] == "extractive"
+    assert any(expected_note in item for item in payload["limitations"])
     assert completion_text not in payload["answer"]
-    assert payload["answer_state"] == "withheld"
     assert payload["repair_retry_used"] is True
     assert payload["evidence"]
     assert nugen.completion_calls == 2
@@ -857,13 +912,23 @@ async def test_uncited_first_response_is_repaired_once_and_cited_answer_is_used(
     assert response.status_code == 200
     assert payload["answer"] == "A cautious answer grounded in the passage. [S1]"
     assert payload["answer_state"] == "validated"
+    assert payload["answer_mode"] == "generated"
     assert payload["repair_retry_used"] is True
     assert payload["model_mode"] == "base_fallback"
     assert nugen.completion_calls == 2
     assert all(item.temperature == 0.1 for item in nugen.completion_requests)
     assert "Repair the answer using only the numbered source passages" in nugen.completion_requests[1].messages[0].content
-    assert "Passage:" in nugen.completion_requests[1].messages[0].content
-    assert nugen.completion_requests[1].messages[1].content == "What is an SIP?"
+    assert "Passage:" in nugen.completion_requests[1].messages[1].content
+    assert nugen.completion_requests[1].messages[1].content.endswith("Question:\nWhat is an SIP?")
+
+
+def test_citation_validation_rejects_a_second_uncited_sentence() -> None:
+    issue = _citation_validation_note(
+        "First sentence is cited. [S1] Second sentence is not.",
+        {"S1": object()},  # type: ignore[dict-item]
+    )
+
+    assert issue == "One or more sentences did not end with their own citation marker."
 
 
 @pytest.mark.asyncio

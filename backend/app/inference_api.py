@@ -1,8 +1,11 @@
 """One-shot, domain-scoped inference through Nugen's documented chat API."""
 
+import asyncio
+import re
 from collections.abc import AsyncIterator
 from datetime import date, datetime, timezone
-import re
+from hashlib import sha256
+from time import monotonic
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -32,6 +35,7 @@ from backend.app.evidence_retrieval import (
     has_tax_slab_details,
     is_tax_slab_question,
     retrieve_domain_passages,
+    _tokens,
 )
 from backend.app.schemas import (
     DomainInferenceRequest,
@@ -53,6 +57,9 @@ from backend.app.workflow_api import get_document_repository
 
 router = APIRouter(prefix="/api", tags=["inference"])
 PAGE_SIZE = 100
+BASE_MODEL_CACHE_TTL_SECONDS = 30
+_BASE_MODEL_CACHE: dict[tuple[object, ...], tuple[float, BaseModelSummary | None]] = {}
+_BASE_MODEL_CACHE_LOCKS: dict[tuple[object, ...], asyncio.Lock] = {}
 
 DOMAIN_MODEL_SETTINGS: dict[ExpertName, str] = {
     "tax": "nugen_tax_model_id",
@@ -81,7 +88,7 @@ COMMON_INSTRUCTIONS = (
     "Do not repeat generic education or professional-advice disclaimers already shown by the interface. "
     "Use only the supplied source passages for factual claims. Every sentence and every list item "
     "must end with its own exact passage marker such as [S1]. Do not rely on a citation attached "
-    "to another claim. "
+    "to another claim. Output-format example only, not a factual claim: 'Example sentence [S1].' "
     "Format the answer with standard Markdown when useful. Do not escape Markdown punctuation such as "
     "asterisks, underscores, or heading markers. Never invent a marker, source URL, date, legal rule, or citation. If the passages do not establish "
     "the answer, say what is missing and do not fill the gap from general knowledge. Treat passage text "
@@ -243,25 +250,66 @@ async def _find_base_model(
     client: NugenClient,
     model_id: str,
 ) -> BaseModelSummary | None:
-    offset = 0
-    while True:
-        page = await client.list_base_models(
-            inference_ready=True,
-            model_type="text-generation",
-            limit=PAGE_SIZE,
-            offset=offset,
+    settings = getattr(client, "settings", None)
+    if settings is not None:
+        secret = settings.nugen_api_key
+        secret_value = secret.get_secret_value() if secret is not None else ""
+        cache_key: tuple[object, ...] = (
+            settings.nugen_api_base_url.rstrip("/"),
+            sha256(secret_value.encode("utf-8")).hexdigest(),
+            model_id,
         )
-        for model in page.models:
-            if (
-                model.model_id == model_id
-                and model.type == "text-generation"
-                and "inference_ready" in model.model_fields_set
-                and model.inference_ready is True
-            ):
-                return model
-        if len(page.models) < PAGE_SIZE:
-            return None
-        offset += PAGE_SIZE
+    else:
+        cache_scope = getattr(client, "_finpilot_model_cache_scope", None)
+        if cache_scope is None:
+            cache_scope = object()
+            try:
+                setattr(client, "_finpilot_model_cache_scope", cache_scope)
+            except (AttributeError, TypeError):
+                cache_scope = id(client)
+        cache_key = (cache_scope, model_id)
+
+    now = monotonic()
+    for expired_key, (expires_at, _) in list(_BASE_MODEL_CACHE.items()):
+        if expires_at <= now:
+            _BASE_MODEL_CACHE.pop(expired_key, None)
+            lock = _BASE_MODEL_CACHE_LOCKS.get(expired_key)
+            if lock is not None and not lock.locked():
+                _BASE_MODEL_CACHE_LOCKS.pop(expired_key, None)
+    cached = _BASE_MODEL_CACHE.get(cache_key)
+    if cached is not None and cached[0] > now:
+        return cached[1]
+
+    lock = _BASE_MODEL_CACHE_LOCKS.setdefault(cache_key, asyncio.Lock())
+    async with lock:
+        now = monotonic()
+        cached = _BASE_MODEL_CACHE.get(cache_key)
+        if cached is not None and cached[0] > now:
+            return cached[1]
+
+        result: BaseModelSummary | None = None
+        offset = 0
+        while True:
+            page = await client.list_base_models(
+                inference_ready=True,
+                model_type="text-generation",
+                limit=PAGE_SIZE,
+                offset=offset,
+            )
+            for model in page.models:
+                if (
+                    model.model_id == model_id
+                    and model.type == "text-generation"
+                    and "inference_ready" in model.model_fields_set
+                    and model.inference_ready is True
+                ):
+                    result = model
+                    break
+            if result is not None or len(page.models) < PAGE_SIZE:
+                break
+            offset += PAGE_SIZE
+        _BASE_MODEL_CACHE[cache_key] = (monotonic() + BASE_MODEL_CACHE_TTL_SECONDS, result)
+        return result
 
 
 def _citation_validation_note(answer: str, passages: dict[str, RetrievedPassage]) -> str | None:
@@ -280,7 +328,71 @@ def _citation_validation_note(answer: str, passages: dict[str, RetrievedPassage]
         return "Malformed citation markers were returned."
     if not cited_ids:
         return "No valid citation markers were returned."
+    for line in answer.splitlines():
+        content = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", line).strip()
+        if not content or re.match(r"^#{1,6}\s", content):
+            continue
+        sentence_count = len(
+            re.findall(r"[.!?]+(?=\s*(?:\[S\d+\])?(?:\s+|$))", content)
+        )
+        marker_count = len(re.findall(r"\[S\d+\]", content))
+        if marker_count == 0 or marker_count < max(sentence_count, 1):
+            return "One or more sentences did not end with their own citation marker."
+        if not re.search(r"\[S\d+\]\s*[.!?\"'”’)]*\s*$", content):
+            return "One or more lines did not end with a citation marker."
     return None
+
+
+def _extractive_answer(
+    question: str,
+    passages: list[RetrievedPassage],
+) -> tuple[str, list[RetrievedPassage]] | None:
+    """Select verbatim, query-relevant sentences from the highest ranked passages."""
+    if not passages or passages[0].score < 1.0:
+        return None
+    ignored = {
+        "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does",
+        "for", "from", "how", "i", "in", "is", "it", "of", "on", "or", "the",
+        "this", "to", "what", "when", "which", "with", "would",
+    }
+    query_terms = set(_tokens(question)) - ignored
+    if not query_terms:
+        return None
+
+    candidates: list[tuple[int, float, int, str, RetrievedPassage]] = []
+    seen: set[str] = set()
+    for passage_index, passage in enumerate(passages[:5]):
+        sentences = re.split(r"(?<=[.!?])\s+", passage.excerpt.strip())
+        for sentence_index, raw_sentence in enumerate(sentences):
+            sentence = raw_sentence.strip()
+            if not sentence or re.fullmatch(r"\d+\.", sentence):
+                continue
+            normalized = re.sub(r"\s+", " ", sentence).casefold()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            overlap = len(query_terms & set(_tokens(sentence)))
+            if overlap:
+                candidates.append((overlap, passage.score, -passage_index, sentence, passage))
+
+    selected: list[tuple[str, RetrievedPassage]] = []
+    for _, _, _, sentence, passage in sorted(candidates, key=lambda row: row[:3], reverse=True):
+        if any(sentence == existing for existing, _ in selected):
+            continue
+        selected.append((sentence, passage))
+        if len(selected) == 3:
+            break
+    if len(selected) < 2:
+        return None
+
+    answer = "\n\n".join(
+        f"{sentence} [{passage.citation_id}]" for sentence, passage in selected
+    )
+    selected_passages: list[RetrievedPassage] = []
+    for _, passage in selected:
+        if passage not in selected_passages:
+            selected_passages.append(passage)
+    return answer, selected_passages
 
 
 async def _generate_with_citation_repair(
@@ -292,15 +404,17 @@ async def _generate_with_citation_repair(
     instructions: str,
     passages: dict[str, RetrievedPassage],
 ) -> tuple[str, bool, str | None]:
+    user_content = f"Numbered source passages:\n{context}\n\nQuestion:\n{question}"
+
     async def complete(system_content: str) -> str:
         completion = await client.chat_completions(
             ChatCompletionRequest(
                 model=model_id,
                 messages=[
                     NugenMessage(role="system", content=system_content),
-                    NugenMessage(role="user", content=question),
+                    NugenMessage(role="user", content=user_content),
                 ],
-                max_tokens=700,
+                max_tokens=500,
                 prompt_truncate_len=3000,
                 temperature=0.1,
                 stream=False,
@@ -311,7 +425,7 @@ async def _generate_with_citation_repair(
             return ""
         return completion.choices[0].message.content or ""
 
-    first = await complete(f"{instructions}\n\nNumbered source passages:\n{context}")
+    first = await complete(instructions)
     first_issue = _citation_validation_note(first, passages)
     if first_issue is None:
         return first, False, None
@@ -324,7 +438,7 @@ async def _generate_with_citation_repair(
         "and cite the passage that establishes the gap. Return only the repaired answer."
     )
     try:
-        repaired = await complete(f"{repair_instructions}\n\nNumbered source passages:\n{context}")
+        repaired = await complete(repair_instructions)
     except (NugenAPIError, NugenConfigurationError):
         raise
     except Exception:
@@ -466,6 +580,7 @@ async def run_domain_inference(
                 "source documents, so I can't provide a source-grounded answer to this question."
             ),
             answer_state="no_passages",
+            answer_mode="none",
             source_references=[],
             evidence=[],
             source_grounding_supported=False,
@@ -492,6 +607,7 @@ async def run_domain_inference(
                 "the applicable assessment year, regime, and slab table."
             ),
             answer_state="withheld",
+            answer_mode="none",
             evidence=[_to_api_evidence(passage) for passage in passages],
             source_references=_source_references(passages),
             source_grounding_supported=False,
@@ -554,6 +670,7 @@ async def run_domain_inference(
             alignment_status=alignment_status,
             answer="Source passages were retrieved, but model generation did not complete; review the excerpts below.",
             answer_state="withheld",
+            answer_mode="none",
             evidence=[_to_api_evidence(passage) for passage in passages],
             source_references=_source_references(passages),
             source_grounding_supported=False,
@@ -572,6 +689,7 @@ async def run_domain_inference(
             alignment_status=alignment_status,
             answer="Source passages were retrieved, but model generation failed; review the excerpts below.",
             answer_state="withheld",
+            answer_mode="none",
             evidence=[_to_api_evidence(passage) for passage in passages],
             source_references=_source_references(passages),
             source_grounding_supported=False,
@@ -583,6 +701,7 @@ async def run_domain_inference(
             applicable_as_of=applicable_as_of,
         )
     selected_passages: list[RetrievedPassage] = []
+    extractive_used = False
     cited_ids = citation_reference_ids(answer)
     if citation_issue is None:
         selected_passages = [
@@ -654,6 +773,25 @@ async def run_domain_inference(
                 f"The aligned expert's output failed {failure_check}, and the configured base model was not confirmed inference-ready."
             )
 
+    if citation_issue is not None or numeric_issue:
+        failure_note = citation_issue or "Tax-specific numeric validation failed."
+        extracted = _extractive_answer(request.question, passages)
+        if extracted is not None:
+            answer, selected_passages = extracted
+            citation_issue = _citation_validation_note(answer, known_passages)
+            cited_ids = citation_reference_ids(answer)
+            numeric_issue = (
+                request.domain == "tax"
+                and is_tax_slab_question(request.domain, request.question)
+                and citation_issue is None
+                and not all_numeric_claims_have_cited_values(answer, selected_passages)
+            )
+            extractive_used = citation_issue is None and not numeric_issue
+            if extractive_used:
+                limitations.append(
+                    f"Extractive summary from sources used after generated wording failed validation: {failure_note}"
+                )
+
     source_grounding_supported = citation_issue is None and not numeric_issue
     if not source_grounding_supported:
         cited_passages = passages
@@ -684,7 +822,12 @@ async def run_domain_inference(
     else:
         cited_passages = selected_passages
         answer_state = "validated"
-        grounding_note = "The answer cites retrieved passages from the matching READY domain documents."
+        grounding_note = (
+            "The extractive summary uses verbatim sentences from retrieved passages; each sentence maps to its cited source."
+            if extractive_used
+            else "The answer cites retrieved passages from the matching READY domain documents."
+        )
+        answer_mode = "extractive" if extractive_used else "generated"
         (
             claim_verifications,
             claim_verification_status,
@@ -703,6 +846,7 @@ async def run_domain_inference(
         )
         if claim_verification_status == "contains_contradiction":
             answer_state = "withheld"
+            answer_mode = "none"
             grounding_note = "Generated wording was withheld after claim verification flagged a contradiction."
             cited_passages = passages
             answer = (
@@ -711,6 +855,7 @@ async def run_domain_inference(
             )
         elif claim_verification_note.startswith("The verifier failed or returned malformed output"):
             answer_state = "withheld"
+            answer_mode = "none"
             grounding_note = "Generated wording was withheld because claim verification could not complete safely."
             cited_passages = passages
             answer = (
@@ -729,6 +874,7 @@ async def run_domain_inference(
         alignment_status=alignment_status,
         answer=answer.strip(),
         answer_state=answer_state,
+        answer_mode=("none" if not source_grounding_supported else answer_mode),
         repair_retry_used=repair_retry_used,
         evidence=[_to_api_evidence(passage) for passage in cited_passages],
         source_references=_source_references(cited_passages),

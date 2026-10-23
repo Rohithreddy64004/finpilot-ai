@@ -150,6 +150,7 @@ def _map_expert_result(
         model_mode=response.model_mode,
         alignment_status=response.alignment_status,
         answer_state=response.answer_state,
+        answer_mode=response.answer_mode,
         repair_retry_used=response.repair_retry_used,
         source_grounding_supported=response.source_grounding_supported,
         source_grounding_note=response.source_grounding_note,
@@ -390,12 +391,20 @@ async def ask_question(
     final_grounding_note = "No source-grounded expert output was available."
 
     final_answer_state = "validated"
+    final_answer_mode = "none"
 
     def individual_validated_answers() -> str:
         return "\n\n".join(
             f"### {result.expert.title()} expert\n{result.answer}"
             for result in grounded_results
         )
+
+    def individual_answer_mode() -> str:
+        if all(result.answer_mode == "extractive" for result in grounded_results):
+            return "extractive"
+        if any(result.answer_mode == "extractive" for result in grounded_results):
+            return "mixed"
+        return "generated"
 
     if not grounded_results:
         if sources:
@@ -412,6 +421,7 @@ async def ask_question(
     elif len(grounded_results) == 1:
         selected = grounded_results[0]
         final_answer = selected.answer
+        final_answer_mode = selected.answer_mode
         final_grounding = selected.source_grounding_supported
         final_grounding_note = selected.source_grounding_note
         final_claims = selected.claim_verifications
@@ -436,6 +446,7 @@ async def ask_question(
             )
             if not citations_valid or not covers_each_expert:
                 final_answer = individual_validated_answers()
+                final_answer_mode = individual_answer_mode()
                 gaps.append(
                     citation_note
                     if not citations_valid
@@ -469,6 +480,7 @@ async def ask_question(
                     "The verifier failed or returned malformed output"
                 ):
                     final_answer = individual_validated_answers()
+                    final_answer_mode = individual_answer_mode()
                     final_grounding = True
                     final_grounding_note = (
                         "Synthesis was withheld after claim assessment; individual validated expert answers are shown."
@@ -486,10 +498,12 @@ async def ask_question(
                     final_claim_note = "Individual expert claim assessments are attached; the synthesis was not used."
                 else:
                     final_answer = draft
+                    final_answer_mode = "generated"
                     final_grounding = True
                     final_grounding_note = citation_note
         except Exception:
             final_answer = individual_validated_answers()
+            final_answer_mode = individual_answer_mode()
             final_answer += (
                 "\n\nSynthesis was unavailable; individual expert answers are shown."
             )
@@ -510,6 +524,7 @@ async def ask_question(
 
     if final_grounding and not _validate_citations(final_answer, sources)[0]:
         final_answer = "Source excerpts (no generated summary)" if sources else "No supporting passage found."
+        final_answer_mode = "none"
         final_grounding = False
         final_answer_state = "withheld" if sources else "no_passages"
         final_excerpt_source_ids = [source.citation_id for source in sources]
@@ -531,6 +546,7 @@ async def ask_question(
         experts=expert_results,
         final_answer=final_answer,
         final_answer_state=final_answer_state,
+        final_answer_mode=final_answer_mode,
         final_excerpt_source_ids=final_excerpt_source_ids,
         final_answer_source_grounding_supported=final_grounding,
         final_answer_source_grounding_note=final_grounding_note,

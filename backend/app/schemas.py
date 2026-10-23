@@ -10,6 +10,8 @@ ExpertName = Literal["tax", "investment", "insurance"]
 AlignmentStatus = Literal["aligned", "unaligned"]
 ModelMode = Literal["aligned", "base_fallback", "base_fallback_after_validation_failure"]
 AnswerState = Literal["validated", "no_passages", "withheld"]
+AnswerMode = Literal["generated", "extractive", "none"]
+FinalAnswerMode = Literal["generated", "extractive", "mixed", "none"]
 ClaimStatus = Literal["supported", "contradicted", "unverified"]
 ClaimAssessmentBasis = Literal[
     "independent_verifier",
@@ -184,6 +186,7 @@ class DomainInferenceResponse(BaseModel):
     alignment_status: AlignmentStatus
     answer: str = Field(min_length=1)
     answer_state: AnswerState = "validated"
+    answer_mode: AnswerMode = "none"
     repair_retry_used: bool = False
     evidence: list[RetrievedEvidence] = Field(default_factory=list)
     source_references: list[SourceReference] = Field(default_factory=list)
@@ -263,6 +266,7 @@ class AskExpertResult(BaseModel):
     model_mode: ModelMode | None = None
     alignment_status: AlignmentStatus = "unaligned"
     answer_state: AnswerState = "no_passages"
+    answer_mode: AnswerMode = "none"
     repair_retry_used: bool = False
     source_grounding_supported: bool = False
     source_grounding_note: str = "No supporting passage was found."
@@ -294,6 +298,7 @@ class AskResponse(BaseModel):
     experts: list[AskExpertResult]
     final_answer: str = Field(min_length=1)
     final_answer_state: AnswerState = "validated"
+    final_answer_mode: FinalAnswerMode = "none"
     final_excerpt_source_ids: list[str] = Field(default_factory=list)
     final_answer_source_grounding_supported: bool = False
     final_answer_source_grounding_note: str = "No source-grounded final answer was returned."

@@ -37,6 +37,7 @@ export function ChatMessage({
           <div className="pending-answer" role="status" aria-live="polite">
             <LoaderCircle className="spin" size={17} aria-hidden="true" />
             <span>Finding sources... {elapsedSeconds} seconds</span>
+            {elapsedSeconds >= 8 && elapsedSeconds < 20 && <span className="wake-note">The server may be waking up.</span>}
             {elapsedSeconds >= 20 && <span className="slow-note">This is taking longer than usual.</span>}
           </div>
         ) : entry.error ? (

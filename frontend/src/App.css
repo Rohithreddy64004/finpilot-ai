@@ -57,6 +57,7 @@
 .consulted-line { margin: 11px 0 0; color: #53657d; font-size: 12px; }
 .final-answer { padding-top: 14px; }
 .section-label { margin: 0 0 9px; color: #334760; font-size: 14px; font-weight: 700; }
+.extractive-label { display: inline-block; margin: 0 0 8px; padding: 4px 8px; border: 1px solid #bdd2ed; border-radius: 999px; color: #214f87; background: #f0f6ff; font-size: 11px; font-weight: 650; }
 .answer-copy, .detail-answer-copy { max-width: 68ch; color: #263951; font-size: 15px; line-height: 1.72; overflow-wrap: anywhere; }
 .answer-copy > :first-child, .detail-answer-copy > :first-child { margin-top: 0; }
 .answer-copy > :last-child, .detail-answer-copy > :last-child { margin-bottom: 0; }
@@ -128,6 +129,7 @@
 .pending-answer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 13px; border: 1px solid #dfe5ee; border-radius: 9px; color: #435771; background: #fff; font-size: 13px; }
 .pending-answer > svg { color: #245ea9; }
 .slow-note { flex-basis: 100%; padding-left: 25px; color: #67768a; font-size: 12px; }
+.wake-note { flex-basis: 100%; padding-left: 25px; color: #67768a; font-size: 12px; }
 .spin { animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .error-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 12px; border: 1px solid #e6c4c4; border-radius: 9px; color: #783535; background: #fff7f7; font-size: 13px; line-height: 1.5; }

@@ -86,6 +86,20 @@ function parseAnswerState(value: unknown): AnswerState {
   return value
 }
 
+function parseAnswerMode(value: unknown): 'generated' | 'extractive' | 'none' {
+  if (value !== 'generated' && value !== 'extractive' && value !== 'none') {
+    throw new ApiError('The backend returned an unknown answer mode.')
+  }
+  return value
+}
+
+function parseFinalAnswerMode(value: unknown): 'generated' | 'extractive' | 'mixed' | 'none' {
+  if (value !== 'generated' && value !== 'extractive' && value !== 'mixed' && value !== 'none') {
+    throw new ApiError('The backend returned an unknown final answer mode.')
+  }
+  return value
+}
+
 function parseModelMode(value: unknown): ModelMode {
   if (value !== 'aligned' && value !== 'base_fallback' && value !== 'base_fallback_after_validation_failure') {
     throw new ApiError('The backend returned an unknown model mode.')
@@ -146,6 +160,7 @@ export function parseInferenceResponse(value: unknown, expectedDomain: Domain): 
   }
   const modelMode = parseModelMode(value.model_mode)
   const answerState = parseAnswerState(value.answer_state)
+  const answerMode = parseAnswerMode(value.answer_mode)
   if (typeof value.repair_retry_used !== 'boolean') {
     throw new ApiError('The backend returned an invalid citation repair retry status.')
   }
@@ -232,6 +247,7 @@ export function parseInferenceResponse(value: unknown, expectedDomain: Domain): 
     alignment_status: alignmentStatus,
     answer: requireString(value, 'answer'),
     answer_state: answerState,
+    answer_mode: answerMode,
     repair_retry_used: value.repair_retry_used,
     evidence,
     source_references: references,
@@ -350,6 +366,7 @@ function parseAskExpert(value: unknown): AskExpertResult {
   const status = value.status
   const alignment = value.alignment_status
   const answerState = parseAnswerState(value.answer_state)
+  const answerMode = parseAnswerMode(value.answer_mode)
   const modelMode = status === 'error' && value.model_mode === null
     ? null
     : parseModelMode(value.model_mode)
@@ -399,6 +416,7 @@ function parseAskExpert(value: unknown): AskExpertResult {
     model_mode: modelMode,
     alignment_status: alignment,
     answer_state: answerState,
+    answer_mode: answerMode,
     repair_retry_used: value.repair_retry_used,
     source_grounding_supported: grounded,
     source_grounding_note: optionalString(value, 'source_grounding_note') ?? '',
@@ -455,6 +473,7 @@ export function parseAskResponse(value: unknown): AskResponse {
   }
   const knownIds = new Set(sourceIds)
   const finalAnswerState = parseAnswerState(value.final_answer_state)
+  const finalAnswerMode = parseFinalAnswerMode(value.final_answer_mode)
   const finalExcerptSourceIds = parseStringList(value.final_excerpt_source_ids, 'final excerpt source ID')
   if (new Set(finalExcerptSourceIds).size !== finalExcerptSourceIds.length ||
       finalExcerptSourceIds.some((id) => !knownIds.has(id))) {
@@ -509,6 +528,7 @@ export function parseAskResponse(value: unknown): AskResponse {
     experts,
     final_answer: finalAnswer,
     final_answer_state: finalAnswerState,
+    final_answer_mode: finalAnswerMode,
     final_excerpt_source_ids: finalExcerptSourceIds,
     final_answer_source_grounding_supported: grounded,
     final_answer_source_grounding_note: optionalString(value, 'final_answer_source_grounding_note') ?? '',

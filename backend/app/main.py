@@ -122,7 +122,7 @@ if (FRONTEND_DIST / "assets").is_dir():
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])
 async def health_check() -> HealthResponse:
-    """Report that the API process is responding."""
+    """Keepalive-safe process check; it does not call MongoDB or Nugen."""
 
     return HealthResponse(service=settings.app_name)
 

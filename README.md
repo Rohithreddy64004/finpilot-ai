@@ -23,7 +23,7 @@ flowchart LR
     E --> S
 ```
 
-The three expert retrieval paths are domain-filtered and use the local BM25 implementation in `backend/app/evidence_retrieval.py`. There is no vector database or configured embedding search. An answer is described as source-grounded only when retrieved passages were supplied and its citation markers map to those passages. Claim verification is a separate status: exact sentence comparison is not semantic entailment, and an independent verifier is available only if separately configured and checked.
+The three expert retrieval paths are domain-filtered and use the local BM25 implementation in `backend/app/evidence_retrieval.py`. There is no vector database or configured embedding search. Explicit topic terms add matching domains after model routing, so cross-domain questions can consult multiple experts. An answer is described as source-grounded only when retrieved passages were supplied and its citation markers map to those passages. If generated wording does not validate, strong retrieved passages can produce a short extractive answer made from verbatim sentences with passage citations. Claim verification is separate: exact sentence comparison is not semantic entailment, and an independent verifier is available only if separately configured and checked.
 
 ## Repository map
 
@@ -86,6 +86,7 @@ Create a local `.env` file in the repository root and configure values on your o
 - `NUGEN_TAX_MODEL_ID`
 - `NUGEN_INVESTMENT_MODEL_ID`
 - `NUGEN_INSURANCE_MODEL_ID`
+- `NUGEN_CLAIM_VERIFIER_MODEL_ID` (optional)
 - `MONGODB_URI`
 - `MONGODB_DATABASE`
 - `FRONTEND_ORIGINS`
@@ -99,13 +100,13 @@ The Nugen key is server-side only. Do not put it in Vite settings or browser cod
 
 ## Request and evidence flow
 
-`POST /api/ask` accepts a question and an optional list of expert overrides. Without an override, `backend/app/router.py` first tries the configured router model, then falls back to keyword routing if model routing is unavailable or invalid. A question outside the three domains can produce an empty route and no expert call.
+`POST /api/ask` accepts a question and an optional list of expert overrides. Without an override, `backend/app/router.py` first tries the configured router model, then falls back to keyword routing if model routing is unavailable or invalid. A deterministic topic rule adds domains named in the question even when the model router returns only one domain. A question outside the three domains can produce an empty route and no expert call.
 
 For each selected expert, `backend/app/inference_api.py` checks the Mongo active-source selection, checks each selected document's current Nugen status, and requires `READY`. It loads the corresponding local bytes and refuses missing, invalid UTF-8, or byte-count-mismatched content. Retrieval ranks passages with BM25 and assigns citation IDs. Only the selected domain's passages enter that expert's prompt. No generic model knowledge is added as evidence.
 
-Nugen inference is made through the typed client in `backend/app/nugen/client.py`. The expert output is checked against retrieved citation IDs. Multiple expert answers go through `backend/app/synthesizer.py`; the synthesizer is instructed to preserve disagreements and not introduce external facts. If synthesis citations fail validation, the draft is withheld.
+Nugen inference is made through the typed client in `backend/app/nugen/client.py`. The expert output is checked against retrieved citation IDs and sentence-level markers. A single stricter repair retry is available; if that fails for an aligned expert, the verified inference-ready base model can be tried once. When generated wording still fails, strong retrieval may use the extractive path, which selects exact sentences from top-ranked passages and adds their citation markers. Multiple expert answers go through `backend/app/synthesizer.py`; the synthesizer is instructed to preserve disagreements and not introduce external facts. If synthesis citations fail validation, the draft is withheld.
 
-`source_grounding_supported` means that retrieved passages were used and answer citations passed the source mapping checks; it does not mean that factual claims were independently proven. Claim assessments are returned per claim. Exact source-text matches can be labeled as such, while paraphrases stay unverified without a suitable verifier. A configured verifier must be a distinct inference-ready model and its output must pass schema and quote checks. The current default is verification unavailable.
+`source_grounding_supported` means that retrieved passages were used and answer citations passed the source mapping checks; it does not mean that factual claims were independently proven. Claim assessments are returned per claim. Exact source-text matches can be labeled as such, while paraphrases stay “Not independently verified” unless a suitable verifier is configured. Set the optional `NUGEN_CLAIM_VERIFIER_MODEL_ID` only to a distinct inference-ready model; its output must pass schema and quote checks. Without it, the UI keeps the conservative unverified label. A short-lived readiness cache reduces repeated base-model checks. Independent expert calls and selected-source retrieval work concurrently where possible. The health endpoint remains lightweight for host keepalive checks and does not call Nugen or MongoDB; it does not guarantee that a free host will avoid every cold start.
 
 The UI renders Markdown with HTML disabled, validates external links, maps `[S1]` citations to evidence cards, displays the source URL and retrieval date, and labels unverified model status as `Base model (not aligned)`. HTTP 429, request timeout, unavailable source content, and generic service errors are shown separately.
 
@@ -254,6 +255,16 @@ No benchmark was run for this README update. Replace these placeholders only wit
 | Router-only | Not measured | Not measured | Not applicable | Not measured | Placeholder — not run |
 | Full baseline and system | Not measured | Not measured | Not measured | Not measured | Placeholder — not run |
 
+## Alignment status placeholder
+
+No fresh `scripts/alignment_report.py` output was provided for this README update. Do not infer alignment from configured model IDs. Replace these placeholders only with a copied provider-verified report:
+
+| Domain | Tracked state | Alignment ID | Model ID | Deployment state | Verification reason |
+|---|---|---|---|---|---|
+| Tax | Not verified | Not provided | Not provided | Not verified | Awaiting alignment report output |
+| Investment | Not verified | Not provided | Not provided | Not verified | Awaiting alignment report output |
+| Insurance | Not verified | Not provided | Not provided | Not verified | Awaiting alignment report output |
+
 ## Limitations and next steps
 
 - No expert alignment status is asserted here; provider status was not freshly checked in this work.
@@ -263,4 +274,4 @@ No benchmark was run for this README update. Replace these placeholders only wit
 - Source-grounded output can still be incomplete or wrong. A citation is evidence provenance, not a correctness guarantee.
 - A fresh database needs existing records and active selections migrated or new documents registered and activated; seeding only restores matching local text bytes.
 
-**What I would do next:** review the corpus sources and status output; confirm the MongoDB data migration plan; perform one domain's document registration and activation manually; verify the rollback path; then decide whether to submit a separately reviewed alignment job. Only after those checks would I deploy and run the manual smoke and fixed-dataset evaluations.
+**What I would do next:** review the new corpus summaries against their official pages; register and activate the cleaned corpus one domain at a time; consider a v2 alignment on that corpus after reviewing each provider request; configure a separate claim-verifier model if available; then collect fixed-dataset evaluation results. After those checks, push and redeploy, verify the MongoDB data migration and rollback path, and run the manual smoke test.

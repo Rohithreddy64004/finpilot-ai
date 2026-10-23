@@ -18,6 +18,7 @@ function responseFixture(domain: Domain = 'tax'): InferenceResponse {
     alignment_status: 'unaligned',
     answer: 'A deduction reduces taxable income. [S1]',
     answer_state: 'validated',
+    answer_mode: 'generated',
     repair_retry_used: false,
     evidence: [{
       citation_id: 'S1',
@@ -77,6 +78,7 @@ function askResponseFixture(): AskResponse {
       model_mode: 'base_fallback',
       alignment_status: 'unaligned',
       answer_state: 'validated',
+      answer_mode: 'generated',
       repair_retry_used: false,
       source_grounding_supported: true,
       source_grounding_note: 'The citation maps to a retrieved passage.',
@@ -90,6 +92,7 @@ function askResponseFixture(): AskResponse {
     }],
     final_answer: 'Taxable income is assessed under the applicable regime. [S1]',
     final_answer_state: 'validated',
+    final_answer_mode: 'generated',
     final_excerpt_source_ids: [],
     final_answer_source_grounding_supported: true,
     final_answer_source_grounding_note: 'The citation maps to a retrieved passage.',
@@ -338,6 +341,7 @@ describe('parseInferenceResponse', () => {
       alignment_status: 'unaligned',
       answer: 'General educational answer.',
       answer_state: 'validated',
+      answer_mode: 'generated',
       repair_retry_used: false,
     }
 

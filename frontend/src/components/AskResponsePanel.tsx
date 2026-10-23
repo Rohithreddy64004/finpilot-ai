@@ -21,7 +21,28 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
   const expertDomains = response.routing.experts.length
     ? response.routing.experts
     : response.experts.map((expert) => expert.expert)
-  const limitations = response.gaps.map((item) => item.trim()).filter(Boolean)
+  const rawLimitations = [
+    ...response.gaps,
+    ...response.experts.flatMap((expert) => expert.limitations),
+  ].map((item) => item.trim()).filter(Boolean)
+  const hasDateWarning = rawLimitations.some((item) =>
+    /selected source text was retrieved on|selected source has no retrieval date/i.test(item),
+  )
+  const sourceDates = [...new Set(response.sources
+    .map((source) => source.source.accessed_on)
+    .filter((value): value is string => Boolean(value)))].sort()
+  const uniqueLimitations = new Map<string, string>()
+  for (const item of rawLimitations) {
+    if (/selected source text was retrieved on|selected source has no retrieval date/i.test(item)) continue
+    const key = item.replace(/\s+/g, ' ').toLowerCase()
+    if (!uniqueLimitations.has(key)) uniqueLimitations.set(key, item)
+  }
+  const limitations = [...uniqueLimitations.values()]
+  if (hasDateWarning) {
+    limitations.push(sourceDates.length
+      ? `Sources retrieved on ${sourceDates.join(', ')}. Check current official guidance for time-sensitive rules.`
+      : 'Source retrieval dates are unavailable. Check current official guidance for time-sensitive rules.')
+  }
 
   async function submitFeedback(rating: 'up' | 'down') {
     if (!onFeedback || submitting || feedback === 'sent') return
@@ -64,6 +85,12 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
 
       <section className={`final-answer ${response.final_answer_state === 'withheld' ? 'withheld-answer' : ''}`} aria-label="Final answer">
         <h2 className="section-label">Answer</h2>
+        {response.final_answer_mode === 'extractive' && response.final_answer_state === 'validated' && (
+          <p className="extractive-label">Extractive summary from sources</p>
+        )}
+        {response.final_answer_mode === 'mixed' && response.final_answer_state === 'validated' && (
+          <p className="extractive-label">This answer includes an extractive summary from sources.</p>
+        )}
         {response.final_answer_state === 'validated' ? (
           <MarkdownContent className="answer-copy" text={response.final_answer} />
         ) : response.final_answer_state === 'withheld' ? (
@@ -112,7 +139,7 @@ export function AskResponsePanel({ response, onFeedback }: AskResponsePanelProps
 
           {limitations.length > 0 && (
             <section className="details-section">
-              <h3>Gaps and limitations</h3>
+              <h3>Limitations and gaps</h3>
               <ul>{limitations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
             </section>
           )}
@@ -155,7 +182,6 @@ function safeExpertError(expert: AskExpertResult): string {
 }
 
 function ExpertDetails({ expert }: { expert: AskExpertResult }) {
-  const constraints = expert.limitations.map((item) => item.trim()).filter(Boolean)
   return (
     <section className="details-section expert-detail">
       <h3>{expertNames[expert.expert]} expert</h3>
@@ -169,16 +195,10 @@ function ExpertDetails({ expert }: { expert: AskExpertResult }) {
         <p className="expert-error">{safeExpertError(expert)}</p>
       ) : (
         <>
-          <h4>Expert response</h4>
+          <h4>{expert.answer_mode === 'extractive' ? 'Extractive summary from sources' : 'Expert response'}</h4>
           <MarkdownContent className="detail-answer-copy" text={expert.answer} />
           {expert.claim_verifications.length > 0 && (
             <ClaimDetails title="Expert claim checks" claims={expert.claim_verifications} />
-          )}
-          {constraints.length > 0 && (
-            <>
-              <h4>Limitations</h4>
-              <ul>{constraints.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
-            </>
           )}
         </>
       )}
