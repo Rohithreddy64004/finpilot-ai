@@ -1,8 +1,18 @@
 # FinPilot AI
 
-FinPilot AI is an educational finance assistant for Indian tax, investment, and insurance questions. A router selects one or more domain experts. Each expert retrieves passages only from its explicitly active, provider-READY document set, asks a Nugen model to answer from those passages, and returns evidence and limitations. A synthesizer combines multiple expert results while retaining disagreements and source gaps. The application is not a licensed financial adviser.
+A finance education assistant for Indian tax, investing, and insurance, built for the Nugen Intelligence challenge.
 
-## Architecture
+## Live demo
+
+- Frontend (Firebase Hosting): [finpilot-ai-nugen.web.app](https://finpilot-ai-nugen.web.app)
+- Backend and full app (Render): [finpilot-ai-t691.onrender.com](https://finpilot-ai-t691.onrender.com)
+- Health: [`/health`](https://finpilot-ai-t691.onrender.com/health)
+- Source health: [`/api/source-health`](https://finpilot-ai-t691.onrender.com/api/source-health)
+- GitHub: [Rohithreddy64004/finpilot-ai](https://github.com/Rohithreddy64004/finpilot-ai)
+
+The free Render instance sleeps when idle; the first request after wake-up can take about a minute. The URLs are included for review; their availability was not checked during this README update.
+
+## How it works
 
 ```mermaid
 flowchart LR
@@ -10,268 +20,152 @@ flowchart LR
     R --> T[Tax expert]
     R --> I[Investment expert]
     R --> H[Insurance expert]
-    T --> TB[Tax active documents and local BM25]
-    I --> IB[Investment active documents and local BM25]
-    H --> HB[Insurance active documents and local BM25]
-    TB --> N[Nugen inference]
-    IB --> N
-    HB --> N
-    N --> S[Synthesizer]
-    S --> A[Answer with passage citations, caveats, and dates]
-    A --> F[Feedback store]
-    E[Fixed evaluation dataset] --> R
-    E --> S
+    T --> TB[Tax active registered sources]
+    I --> IB[Investment active registered sources]
+    H --> HB[Insurance active registered sources]
+    TB --> BM1[Domain BM25 retrieval]
+    IB --> BM2[Domain BM25 retrieval]
+    HB --> BM3[Domain BM25 retrieval]
+    BM1 --> NG[Nugen expert inference]
+    BM2 --> NG
+    BM3 --> NG
+    NG --> V[Citation validation]
+    V --> RR[Repair retry]
+    RR --> BF[Eligible base-model fallback]
+    BF --> EX[Extractive answer]
+    EX --> SE[Retrieved source excerpts]
+    V --> SYN[Multi-domain synthesizer]
+    RR --> SYN
+    BF --> SYN
+    EX --> SYN
+    SYN --> A[Final answer]
+    A --> F[Feedback]
+    E[eval/questions.json] --> R
+    E --> EV[scripts/run_eval.py]
 ```
 
-The three expert retrieval paths are domain-filtered and use the local BM25 implementation in `backend/app/evidence_retrieval.py`. There is no vector database or configured embedding search. Explicit topic terms add matching domains after model routing, so cross-domain questions can consult multiple experts. An answer is described as source-grounded only when retrieved passages were supplied and its citation markers map to those passages. If generated wording does not validate, strong retrieved passages can produce a short extractive answer made from verbatim sentences with passage citations. Claim verification is separate: exact sentence comparison is not semantic entailment, and an independent verifier is available only if separately configured and checked.
+Each selected expert retrieves only from that domain's active, registered documents using the local BM25 implementation in `backend/app/evidence_retrieval.py`. The backend checks provider readiness and matching local source content before retrieval. Citation validation checks that answer markers refer to retrieved passages.
 
-## Repository map
+When generated wording fails citation checks, the system can retry with a stricter prompt, use an eligible base-model fallback, select verbatim sentences from retrieved passages, or show the passages themselves. Multi-domain results are synthesized into one answer. Feedback is stored separately from source content and does not train or align a model.
 
-- `backend/app/`: FastAPI routes, typed schemas, routing, retrieval, inference, synthesis, feedback, alignment tracking, and source-content storage.
-- `backend/app/nugen/`: provider-specific Nugen client, schemas, safe errors, and document/alignment service methods.
-- `backend/tests/`: local tests. Provider calls use mocked HTTP transports; no test submits an alignment or deployment job.
-- `frontend/`: React and TypeScript chat UI. It can be served by FastAPI from the same origin or deployed separately to Firebase Hosting with the Render API.
-- `knowledge_bases/*_expert.txt`: source-labeled educational corpora for the three domains.
-- `knowledge_bases/prepared/`: reviewed source drafts; they are scanned but are not selected for inference unless registered and activated.
-- `knowledge_bases/source_documents/`: ignored local retrieval bytes, named by a hash of each Nugen document ID. Never commit this directory.
-- `eval/`: fixed router and evaluation cases. Generated `eval/results_*.json` are ignored.
-- `scripts/`: corpus checking, seeding, manual corpus registration, alignment reporting, smoke checks, and evaluation.
-- `Dockerfile` and `render.yaml`: one-service deployment configuration. Auto-deploy is disabled in the blueprint.
+## Aligned models
 
-## Windows PowerShell setup
+The following is the exact output of `scripts/alignment_report.py`, run on **2026-10-23**:
 
-Run these commands from the repository root:
+| domain | alignment_id | alignment_status | verification | model_id | deployment | inference_ready |
+|---|---|---|---|---|---|---|
+| tax | alignment_01m4zn5m7jg27j21 | unaligned | UNVERIFIED | - | - | False |
+| investment | alignment_01m4zzsn877xc87j | unaligned | UNVERIFIED | - | - | False |
+| insurance | alignment_01m5015thh3cjcvz | unaligned | UNVERIFIED | - | - | False |
+
+This report does not verify historical alignment on the initial corpus version. It currently reports every domain as `unaligned` and `UNVERIFIED`, with no model or deployment ID. Retrieval uses the currently active registered corpus and requires matching local content; a configured model ID alone is not evidence of alignment.
+
+## Trust and safety design
+
+- Citation validation rejects unknown or malformed source markers and withholds unsupported generated wording.
+- The UI shows an aligned badge only when the backend reports provider-confirmed alignment; otherwise it labels the answer as a base model.
+- Out-of-scope questions return the router's out-of-scope reason without calling a domain expert.
+- A citation shows where wording came from; it does not prove that a claim is correct. Per-claim checks are not an independent semantic verifier by default.
+- Educational information only. Not personalized or licensed financial advice.
+- Keep secret values out of source control. This README lists configuration names only.
+
+## Tech stack
+
+FastAPI, React, Vite, TypeScript, MongoDB Atlas, Nugen API, Render, and Firebase Hosting.
+
+## Quick start
+
+In Windows PowerShell, from the repository root:
 
 ```powershell
-Set-Location C:\Users\rohit\finpilot-ai
 py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r backend\requirements.txt
-```
-
-Install and build the web client in a second PowerShell window:
-
-```powershell
-Set-Location C:\Users\rohit\finpilot-ai\frontend
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+Set-Location frontend
 npm ci
-npm run lint
-npm test
-npm run build
+Set-Location ..
 ```
 
-For local development, start the API in one window:
+Configure the required values in your local environment. The application settings read these backend variable names:
+
+`APP_NAME`, `APP_ENV`, `FRONTEND_ORIGINS`, `MONGODB_URI`, `MONGODB_DATABASE`, `MONGODB_TIMEOUT_MS`, `SOURCE_CONTENT_DIRECTORY`, `SEED_CONTENT_ON_STARTUP`, `API_RATE_LIMIT_REQUESTS`, `API_RATE_LIMIT_WINDOW_SECONDS`, `NUGEN_API_KEY`, `NUGEN_API_BASE_URL`, `NUGEN_TIMEOUT_SECONDS`, `NUGEN_GET_RETRIES`, `ASK_EXPERT_TIMEOUT_SECONDS`, `NUGEN_TEST_MODEL_ID`, `NUGEN_TAX_MODEL_ID`, `NUGEN_INVESTMENT_MODEL_ID`, `NUGEN_INSURANCE_MODEL_ID`, `NUGEN_CLAIM_VERIFIER_MODEL_ID`, and `FINPILOT_CORRECTION_REVIEW_TOKEN`.
+
+The frontend also reads `VITE_API_BASE_URL` at build time. Render supplies `PORT`. Keep the Nugen key, MongoDB URI, and correction-review token on the backend only; do not place secrets in Vite settings.
+
+Run the API and frontend in separate PowerShell windows:
 
 ```powershell
-Set-Location C:\Users\rohit\finpilot-ai
+# Repository root
 .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Start Vite in another window:
-
 ```powershell
-Set-Location C:\Users\rohit\finpilot-ai\frontend
+# frontend/
 npm run dev
 ```
 
-The Vite development server proxies `/api` and `/health` to the API. The single-service production app and API use the same origin, so CORS stays disabled unless a separate frontend origin is configured. `/health` is the liveness endpoint and does not call Nugen or MongoDB.
+Vite proxies API requests to the local backend. The API routes include `POST /api/ask`, `POST /api/feedback`, and `GET /api/source-health`.
 
-## Configuration
-
-Create a local `.env` file in the repository root and configure values on your own machine. `.env` is ignored by Git. This README intentionally lists variable names only and contains no configured values:
-
-- `NUGEN_API_KEY`
-- `NUGEN_API_BASE_URL`
-- `NUGEN_TEST_MODEL_ID`
-- `NUGEN_TAX_MODEL_ID`
-- `NUGEN_INVESTMENT_MODEL_ID`
-- `NUGEN_INSURANCE_MODEL_ID`
-- `NUGEN_CLAIM_VERIFIER_MODEL_ID` (optional)
-- `MONGODB_URI`
-- `MONGODB_DATABASE`
-- `FRONTEND_ORIGINS`
-- `FINPILOT_CORRECTION_REVIEW_TOKEN`
-- `NUGEN_TIMEOUT_SECONDS`
-- `SEED_CONTENT_ON_STARTUP`
-
-The frontend build-time variable is `VITE_API_BASE_URL`.
-
-The Nugen key is server-side only. Do not put it in Vite settings or browser code. Model IDs are configuration, not proof of domain alignment. Alignment is provider-confirmed only after the tracked job, resulting aligned-model row, and deployment status are checked.
-
-## Request and evidence flow
-
-`POST /api/ask` accepts a question and an optional list of expert overrides. Without an override, `backend/app/router.py` first tries the configured router model, then falls back to keyword routing if model routing is unavailable or invalid. A deterministic topic rule adds domains named in the question even when the model router returns only one domain. A question outside the three domains can produce an empty route and no expert call.
-
-For each selected expert, `backend/app/inference_api.py` checks the Mongo active-source selection, checks each selected document's current Nugen status, and requires `READY`. It loads the corresponding local bytes and refuses missing, invalid UTF-8, or byte-count-mismatched content. Retrieval ranks passages with BM25 and assigns citation IDs. Only the selected domain's passages enter that expert's prompt. No generic model knowledge is added as evidence.
-
-Nugen inference is made through the typed client in `backend/app/nugen/client.py`. The expert output is checked against retrieved citation IDs and sentence-level markers. A single stricter repair retry is available; if that fails for an aligned expert, the verified inference-ready base model can be tried once. When generated wording still fails, strong retrieval may use the extractive path, which selects exact sentences from top-ranked passages and adds their citation markers. Multiple expert answers go through `backend/app/synthesizer.py`; the synthesizer is instructed to preserve disagreements and not introduce external facts. If synthesis citations fail validation, the draft is withheld.
-
-`source_grounding_supported` means that retrieved passages were used and answer citations passed the source mapping checks; it does not mean that factual claims were independently proven. Claim assessments are returned per claim. Exact source-text matches can be labeled as such, while paraphrases stay “Not independently verified” unless a suitable verifier is configured. Set the optional `NUGEN_CLAIM_VERIFIER_MODEL_ID` only to a distinct inference-ready model; its output must pass schema and quote checks. Without it, the UI keeps the conservative unverified label. A short-lived readiness cache reduces repeated base-model checks. Independent expert calls and selected-source retrieval work concurrently where possible. The health endpoint remains lightweight for host keepalive checks and does not call Nugen or MongoDB; it does not guarantee that a free host will avoid every cold start.
-
-The UI renders Markdown with HTML disabled, validates external links, maps `[S1]` citations to evidence cards, displays the source URL and retrieval date, and labels unverified model status as `Base model (not aligned)`. HTTP 429, request timeout, unavailable source content, and generic service errors are shown separately.
-
-## Source document workflow
-
-The existing API routes are available in Swagger at `http://127.0.0.1:8000/docs`:
-
-- `GET /api/nugen/base-models` lists supported base models.
-- `POST /api/documents` uploads one UTF-8 text source to Nugen and saves local provenance and source bytes. It creates a new Nugen document; it does not replace an existing document in place.
-- `GET /api/documents?domain=tax|investment|insurance` lists locally registered documents.
-- `GET /api/documents/{domain}/{document_id}/status` refreshes document status from Nugen.
-- `GET /api/documents/{domain}/active-source` reads the explicit active set.
-- `PUT /api/documents/{domain}/active-source` validates provider readiness and local content before atomically selecting an exact document set.
-- `POST /api/documents/{domain}/active-source/rollback` revalidates and restores the previously selected set.
-
-The active selection is separate from document registration. Uploading a document does not activate it. Active-source changes preserve one previous selection for rollback. Do not activate every READY document by default.
-
-`scripts/register_corpus.py` is a manual cutover helper. Its default is a local dry run that validates the source files and prints the plan without making API requests:
+Run tests and frontend checks:
 
 ```powershell
-Set-Location C:\Users\rohit\finpilot-ai
-.\.venv\Scripts\python.exe scripts\register_corpus.py
-.\.venv\Scripts\python.exe scripts\register_corpus.py --domain tax
-```
-
-Only after reviewing the plan and confirming the intended uploads and active-source changes, run the confirmed form. This performs document uploads through the local API, polls status until Nugen confirms `READY`, then activates only the new document ID for that domain. The route preserves the previous active selection for rollback. It never starts an alignment or deployment job.
-
-```powershell
-.\.venv\Scripts\python.exe scripts\register_corpus.py --domain tax --confirm
-```
-
-Run one domain at a time and inspect the response and active-source status before proceeding to another. Do not rerun a confirmed upload blindly after an uncertain response; check the registered document list first.
-
-Local source bytes can be restored from the committed expert corpus only when a registered document is `READY` and its stored byte count matches exactly. The seeder never overwrites a file or calls Nugen. Leave `SEED_CONTENT_ON_STARTUP` disabled unless the current Mongo records and local corpus byte counts have been checked. An empty or new Mongo database does not contain document records or active selections; those must be migrated or registered and explicitly activated.
-
-## Alignment and deployment workflow
-
-Alignment is separate from ordinary inference and may consume provider resources. Previewing an alignment is not a submission. The explicit workflow is:
-
-1. `POST /api/alignments/prepare` validates the base model and registered READY documents and returns the exact request preview. It does not submit a job.
-2. A human reviews domain, source document IDs, base model ID, and payload.
-3. Only with explicit confirmation, call `POST /api/alignments/submit` with `confirm_submission: true`.
-4. Poll `GET /api/alignments/{alignment_id}/status`. FinPilot checks the provider status and linked aligned-model result.
-5. Deployment is a separate explicit request to `POST /api/alignments/{alignment_id}/deploy` with `confirm_deployment: true`.
-6. Treat a model as aligned and inference-ready only after Nugen confirms completed alignment, matching model identity, and deployed status.
-
-`scripts/alignment_report.py` refreshes the latest tracked job for each domain from Nugen and updates local status records. It is read-only with respect to provider jobs: it does not submit alignments or deploy. Use `--no-refresh` to inspect Mongo tracking only. Neither command has been run as part of this change, so this README makes no new claim about any domain's current alignment status.
-
-## Feedback and verified corrections
-
-`POST /api/feedback` stores user ratings separately from the question record. A user saying an answer is wrong is not accepted as ground truth. `POST /api/verified-corrections` requires reviewer authorization and source references, and stores reviewer-attested corrections separately. Feedback does not silently rewrite the knowledge base, train a model, or change a Nugen alignment.
-
-## Evaluation and manual smoke checks
-
-The fixed cases are in `eval/questions.json`; `scripts/run_eval.py` reports routing accuracy and, in full mode, answer coverage, grounding rate, and latency. Its routing-only mode skips expert inference, direct baseline answers, and retrieval, but may still call the configured Nugen router model and writes a local ignored JSON result. Run only when that API use is intended:
-
-```powershell
-Set-Location C:\Users\rohit\finpilot-ai
-.\.venv\Scripts\python.exe scripts\run_eval.py --routing-only
-```
-
-Full evaluation additionally makes baseline inference and `/api/ask` calls; it requires the separate `--confirm-full-eval` flag. Tests do not call this script or Nugen.
-
-With the API and source sets ready, the manual smoke test checks `/health`, one example per domain, an ELSS/NPS cross-domain question, and an out-of-scope question. It sends requests to the local API; `/api/ask` can use the configured router and Nugen experts and records the query in MongoDB.
-
-```powershell
-.\.venv\Scripts\python.exe scripts\smoke_test.py
-```
-
-Check corpus provenance, length, and prompt-instruction leakage locally:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\check_corpus.py
-```
-
-## Tests and quality checks
-
-From the repository root:
-
-```powershell
+# Repository root
 .\.venv\Scripts\python.exe -m pytest -q
 Set-Location frontend
 npm run lint
 npm test
 npm run build
-Set-Location ..
-git diff --check
 ```
 
-Backend tests use fakes and mocked HTTP responses. They do not require API credits, a live MongoDB service, document uploads, alignment submission, deployment, or live inference.
+## Deployment
 
-## Deployment options
+The repository supports two deployment shapes:
 
-Choose either deployment shape:
+1. **Single Render service.** The Docker build compiles the React frontend and the FastAPI app serves it from the same origin. `render.yaml` selects the Docker runtime, health check, and manual deployment behavior.
+2. **Firebase frontend and Render backend.** Firebase Hosting serves `frontend/dist`; Render serves the API. Set `VITE_API_BASE_URL` at frontend build time and configure `FRONTEND_ORIGINS` in Render for the Firebase Hosting origins.
 
-1. **Single Render service:** the Docker image builds React and serves the compiled frontend and FastAPI from the same origin. No browser CORS configuration is needed.
-2. **Firebase frontend with Render API:** Firebase Hosting serves the React build, while the existing Render service remains the FastAPI API. Set `VITE_API_BASE_URL` at frontend build time and set `FRONTEND_ORIGINS` on Render to the exact HTTPS Firebase Hosting origin. The frontend value is public and must not contain secrets.
+For either option, configure MongoDB Atlas network access for the Render service using the access policy appropriate to your deployment. Set backend environment values in Render, not in the repository. `SEED_CONTENT_ON_STARTUP` enables startup seeding only for registered READY documents whose expected local bytes match.
 
-The primary product URL has not been designated; choose it after confirming which deployment option should be primary.
+Recommended manual order:
 
-### Single Render service
+1. Review corpus sources. Run `scripts/register_corpus.py` as a dry run, inspect its plan, then confirm each intended domain registration and active-source change.
+2. After records are registered and READY, run `.\.venv\Scripts\python.exe scripts\seed_content.py` to restore missing local retrieval content from matching records.
+3. Manually deploy the Render service. Auto-deploy is off; startup seeding runs when enabled.
+4. Check `/health` and `/api/source-health`, then run `scripts/smoke_test.py --base-url https://finpilot-ai-t691.onrender.com`.
+5. Run `.\.venv\Scripts\python.exe scripts\alignment_report.py` to refresh and review tracked provider status. This does not submit an alignment job or deploy a model.
 
-1. Connect the repository to Render and create the web service from `render.yaml`.
-2. Enter the required environment variables by name from the Configuration section. Keep secret values in Render, not in the repository.
-3. Manually deploy the Docker service. Auto-deploy is disabled.
-4. Check `/health`, then verify document readiness and active source selections before using inference.
+For Firebase Hosting, build from `frontend/` with `VITE_API_BASE_URL` set to the Render backend URL, then deploy the Hosting target configured in `frontend/firebase.json` and `frontend/.firebaserc`. The Firebase CLI command is:
 
-### Firebase Hosting with Render API
+```powershell
+firebase deploy --only hosting --project finpilot-ai-nugen
+```
 
-1. Keep the Render Docker service running as the API. Set `FRONTEND_ORIGINS` on Render to the exact HTTPS origin Firebase Hosting assigns to this project, then manually redeploy the backend.
-2. From `frontend/`, install dependencies and build the static app with the public API base URL:
+## Tests
 
-   ```powershell
-   npm ci
-   $env:VITE_API_BASE_URL = "https://finpilot-ai-t691.onrender.com"
-   npm run build
-   ```
+Results from **2026-10-23**:
 
-3. Deploy the static build to the configured Firebase project:
+| Suite | Result |
+|---|---|
+| Backend: `.\.venv\Scripts\python.exe -m pytest -q` | 259 passed, 5 failed |
+| Frontend: `npm test` | 3 test files passed, 45 tests passed |
 
-   ```powershell
-   firebase deploy --only hosting --project finpilot-ai-nugen
-   ```
+The backend failures were one evaluation-data corpus-term assertion and four retrieval expectations for 80C, NPS, and PPF sections. The frontend suite passed on its retry after the restricted run could not spawn a Vite child process.
 
-4. Open the Hosting URL, check that `/health` on the Render API responds, and smoke test the browser requests and feedback flow.
+## Evaluation
 
-The Firebase Hosting origin and the primary product URL should be recorded after the Hosting deployment and your choice of primary URL.
+`eval/questions.json` contains the fixed evaluation cases. `scripts/run_eval.py --routing-only` measures routing without expert inference, but can still call the configured Nugen router and writes an ignored result file. No evaluation result file was present under `eval/` when checked for this update, so evaluation results have not been published here.
 
-## MongoDB Atlas setup
+## Known limitations
 
-The Render service uses the Dockerfile and health check described above. MongoDB Atlas setup is shared by both deployment options:
+- The current alignment report marks all three domains `unaligned` and `UNVERIFIED`; historical alignment on the first corpus version was not established by this run.
+- The educational corpus has limited coverage. 80C, NPS, and PPF source coverage still needs verification, and the current backend test run has retrieval failures for those sections.
+- Per-claim output is not independently verified unless a distinct verifier is configured and successfully used; exact text comparison is not semantic entailment.
+- A free Render instance can have cold starts. Citation validation can fall back to extractive text or source excerpts when generated wording fails validation.
+- A new MongoDB database does not automatically contain source records, active-source selections, feedback, or alignment tracking.
 
-1. Create a MongoDB Atlas database and a least-privilege application user. Configure network access for the Render service using a documented secure access method.
-2. Decide how to migrate or re-register the source-document records, local bytes, active-source selections, interaction records, and alignment tracking. A new database does not inherit existing Atlas state automatically.
-3. Enter the backend environment variables by name from the Configuration section in Render. Never commit a populated `.env` or place credentials in frontend settings.
-4. Verify `/health`, document readiness, local source-content availability, and active-source selections. Then use the manual alignment report to check provider status if needed.
+## What I would do next
 
-See the [Render Blueprint specification](https://render.com/docs/blueprint-spec) and [MongoDB Atlas documentation](https://www.mongodb.com/docs/atlas/) for current platform setup details.
+Verify and expand the corpus with current primary sources for 80C, NPS, and PPF; register a reviewed v2 corpus and consider aligning it only after provider and source checks; add a separately validated claim verifier; run and publish the fixed evaluation; and provide persistent storage for retrieved source content.
 
-## Evaluation result placeholders
+## Author
 
-No benchmark was run for this README update. Replace these placeholders only with measured results from the same fixed dataset and mode.
-
-| Evaluation mode | Cases | Routing accuracy | Grounded answers | Latency | Status |
-|---|---:|---:|---:|---:|---|
-| Router-only | Not measured | Not measured | Not applicable | Not measured | Placeholder — not run |
-| Full baseline and system | Not measured | Not measured | Not measured | Not measured | Placeholder — not run |
-
-## Alignment status placeholder
-
-No fresh `scripts/alignment_report.py` output was provided for this README update. Do not infer alignment from configured model IDs. Replace these placeholders only with a copied provider-verified report:
-
-| Domain | Tracked state | Alignment ID | Model ID | Deployment state | Verification reason |
-|---|---|---|---|---|---|
-| Tax | Not verified | Not provided | Not provided | Not verified | Awaiting alignment report output |
-| Investment | Not verified | Not provided | Not provided | Not verified | Awaiting alignment report output |
-| Insurance | Not verified | Not provided | Not provided | Not verified | Awaiting alignment report output |
-
-## Limitations and next steps
-
-- No expert alignment status is asserted here; provider status was not freshly checked in this work.
-- Retrieval is local BM25 over the active domain corpus. There is no vector or embedding search.
-- Claim verification is unavailable unless a distinct verifier is configured and its responses pass validation. Exact-text matches do not establish semantic entailment.
-- The corpus is educational, source-labeled, and dated. Official pages can change; time-sensitive tax and insurance rules require a current source check.
-- Source-grounded output can still be incomplete or wrong. A citation is evidence provenance, not a correctness guarantee.
-- A fresh database needs existing records and active selections migrated or new documents registered and activated; seeding only restores matching local text bytes.
-
-**What I would do next:** review the new corpus summaries against their official pages; register and activate the cleaned corpus one domain at a time; consider a v2 alignment on that corpus after reviewing each provider request; configure a separate claim-verifier model if available; then collect fixed-dataset evaluation results. After those checks, push and redeploy, verify the MongoDB data migration and rollback path, and run the manual smoke test.
+**Rohith Reddy** - [GitHub: Rohithreddy64004](https://github.com/Rohithreddy64004)
