@@ -106,3 +106,10 @@ Accessed: 2026-10-17
 Source title: Factors to Consider Before Investing
 Publisher: SEBI Investor
 This document summarizes selected public SEBI Investor education pages and a booklet. It is not the legal terms of a financial product, an offer, a return forecast, or personal advice. Market products, scheme details, risk disclosures, and tax treatment can change. The retrieval date records when the cited source was checked, not a promise that the information remains current afterward. When a question asks about a particular scheme, share, bond, fund, price, return, fee, tax rule, or current market condition, retrieve the relevant current official disclosure. If an answer is not supported by these passages, state that evidence is missing instead of filling the gap with assumptions.
+
+16. PUBLIC PROVIDENT FUND (PPF) - SUMMARY
+Source: https://investor.sebi.gov.in/pdf/downloadable-documents/Financial%20Education%20Booklet%20-%20English.pdf
+Accessed: 2026-10-23
+Source title: Financial Education Booklet, Public Provident Fund section
+Publisher: SEBI Investor
+Summary: SEBI Investor describes the Public Provident Fund as a Government of India savings scheme and says an account may be opened through a post office or a bank. The booklet also says PPF contributions have been eligible for a deduction under the former Section 80C, subject to the applicable limit and conditions. That booklet is general educational material and does not establish current tax eligibility, account terms, rates, or limits. Check current official scheme and Income Tax Department information before relying on those details.

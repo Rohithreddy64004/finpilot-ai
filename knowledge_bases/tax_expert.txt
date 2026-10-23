@@ -92,3 +92,17 @@ Accessed: 2026-10-17
 Source title: Salaried Individuals for AY 2026-27, page disclaimer and Tax Slabs section
 Publisher: Income Tax Department, Government of India
 This educational summary covers the ordinary under-60 individual table only. It does not cover every taxpayer, age group, income type, return condition, deduction, exemption, rebate condition, surcharge calculation, marginal-relief calculation, special-rate treatment, or other provision. It must not be used as a completed tax computation. If information is missing, if the source is stale, or if the question concerns a special rate or taxpayer eligibility, say so and check the latest official Income Tax Department material. For a personal filing decision or a complex return, consult a qualified tax professional. Source URL: https://www.incometax.gov.in/iec/foportal/help/individual/return-applicable-1
+
+14. SECTION 80C AND SPECIFIED SAVINGS PAYMENTS - SUMMARY
+Source: https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/set%20off/carry%20forward%20of%20losses%20-faq
+Accessed: 2026-10-23
+Source title: Set off/Carry forward of Losses FAQs, questions 9 and 10
+Publisher: Income Tax Department, Government of India
+Summary: The Income Tax Department explains that the Income Tax Act, 2025 places eligible specified savings payments in Schedule XV, corresponding in structure to the former Section 80C and Section 80CCE provisions. It says the kinds of qualifying payments, including life insurance, provident fund, and tuition fees, remain similar in substance. The same page says the Section 123 deduction is not available under the new concessional tax regime. Eligibility depends on the applicable tax year, regime, payment, and statutory conditions; this summary does not establish an individual's entitlement or compute a deduction. Check the Department's current guidance for the relevant year.
+
+15. NATIONAL PENSION SYSTEM CONTRIBUTIONS AND SECTION 80CCD - SUMMARY
+Source: https://pfrda.org.in/schemes/national-pension-system/nps-for-corporates
+Accessed: 2026-10-23
+Source title: NPS for Corporates, tax benefits section
+Publisher: Pension Fund Regulatory and Development Authority (PFRDA)
+Summary: PFRDA describes National Pension System contributions as having distinct tax treatment for employee contributions, employer contributions, and additional deductions under provisions including Sections 80CCD(1), 80CCD(1B), and 80CCD(2). Its corporate-sector page also distinguishes treatment by tax regime. These are separate categories with conditions, not a single general deduction that applies to every NPS subscriber. This source discusses the Income Tax Act, 1961; verify the current Income Tax Department rules for the applicable year and taxpayer before relying on any tax treatment. No deduction amount or contribution percentage is stated in this summary.

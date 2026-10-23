@@ -40,6 +40,16 @@
     "reason": "The question combines tax treatment and investment risk."
   },
   {
+    "question": "Should I choose ELSS or NPS to save tax?",
+    "experts": ["tax", "investment"],
+    "reason": "The question compares investment products for tax-saving purposes."
+  },
+  {
+    "question": "How do PPF and Section 80C relate to tax saving?",
+    "experts": ["tax", "investment"],
+    "reason": "The question combines a tax-saving investment product with a tax provision."
+  },
+  {
     "question": "What is the weather forecast in Mumbai tomorrow?",
     "experts": [],
     "reason": "Out of scope: this is a weather question, not a finance-education question."

@@ -99,6 +99,46 @@ async def test_route_uses_only_verified_inference_ready_base_model_and_strict_js
 
 
 @pytest.mark.parametrize(
+    ("question", "model_experts", "expected"),
+    [
+        ("Should I choose ELSS or NPS to save tax?", ["tax"], ["tax", "investment"]),
+        ("Compare PPF with Section 80C", ["investment"], ["tax", "investment"]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_deterministic_post_routing_adds_explicit_cross_domain_terms(
+    question: str, model_experts: list[str], expected: list[str]
+) -> None:
+    client = FakeNugenClient(json.dumps({"experts": model_experts, "reason": "Model choice."}))
+    settings = Settings(_env_file=None, nugen_api_key="test-only-key", nugen_test_model_id="routing-base")
+
+    result = await route(question, client=client, settings=settings)
+
+    assert result.experts == expected
+    assert result.routing_method == "model"
+    assert "deterministic term matching added" in result.reason.casefold()
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("ELSS or NPS to save tax?", ["tax", "investment"]),
+        ("PPF vs 80C", ["tax", "investment"]),
+        ("What is the SIP?", ["investment"]),
+        ("What does an insurance waiting period mean?", ["insurance"]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_keyword_fallback_covers_finance_products_and_concepts(
+    question: str, expected: list[str]
+) -> None:
+    settings = Settings(_env_file=None, nugen_api_key="test-only-key")
+    result = await route(question, client=FakeNugenClient(), settings=settings)
+    assert result.experts == expected
+    assert result.routing_method == "fallback"
+
+
+@pytest.mark.parametrize(
     "content",
     [
         "not JSON",

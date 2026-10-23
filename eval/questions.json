@@ -26,7 +26,7 @@
   {"id":"cross-01","question":"How do the old and new tax regimes compare, and how should a person think about investing?","expected_experts":["tax","investment"],"must_mention":["old regime","new regime","investing"]},
   {"id":"cross-02","question":"How are investment risk and insurance risk protection different?","expected_experts":["investment","insurance"],"must_mention":["risk"]},
   {"id":"cross-03","question":"How can tax planning and insurance premiums interact?","expected_experts":["tax","insurance"],"must_mention":["premium"]},
-  {"id":"cross-04","question":"Compare mutual funds, life insurance, and tax considerations at a high level.","expected_experts":["tax","investment","insurance"],"must_mention":["mutual fund","life insurance"],"unsupported_terms":["life insurance"],"scope_evidence":["unrelated life"]},
+  {"id":"cross-04","question":"Compare mutual funds, life insurance, and tax considerations at a high level.","expected_experts":["tax","investment","insurance"],"must_mention":["mutual fund","life insurance"],"scope_evidence":["unrelated life"]},
   {"id":"cross-05","question":"How should emergency savings relate to investment liquidity and insurance?","expected_experts":["investment","insurance"],"must_mention":["emergency","liquidity"]},
   {"id":"out-01","question":"What is the weather forecast for Mumbai tomorrow?","expected_experts":[]},
   {"id":"out-02","question":"Explain how to bake sourdough bread.","expected_experts":[]},

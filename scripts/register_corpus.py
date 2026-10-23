@@ -32,7 +32,7 @@ CORPUS_FILES = {
     "insurance": "insurance_expert.txt",
 }
 OFFICIAL_HOSTS = {
-    "tax": ("incometax.gov.in", "incometaxindia.gov.in"),
+    "tax": ("incometax.gov.in", "incometaxindia.gov.in", "pfrda.org.in"),
     "investment": ("sebi.gov.in",),
     "insurance": ("irdai.gov.in", "policyholder.gov.in"),
 }

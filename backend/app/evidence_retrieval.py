@@ -49,7 +49,7 @@ _SOURCE_FIELD_NAMES = {
     "Source", "Accessed", "Source title", "Publisher",
 }
 _OFFICIAL_SOURCE_HOSTS: dict[ExpertName, tuple[str, ...]] = {
-    "tax": ("incometax.gov.in", "incometaxindia.gov.in"),
+    "tax": ("incometax.gov.in", "incometaxindia.gov.in", "pfrda.org.in"),
     "investment": ("investor.sebi.gov.in", "sebi.gov.in"),
     "insurance": ("irdai.gov.in",),
 }
@@ -438,13 +438,18 @@ async def retrieve_domain_passages(
     if not matching_documents:
         return []
 
-    for record in matching_documents:
-        text = await load_registered_document_text(
-            domain,
-            record,
-            content_store,
-            corpus_root=root,
+    document_texts = await asyncio.gather(
+        *(
+            load_registered_document_text(
+                domain,
+                record,
+                content_store,
+                corpus_root=root,
+            )
+            for record in matching_documents
         )
+    )
+    for record, text in zip(matching_documents, document_texts, strict=True):
 
         fallback_reference = SourceReference(
             title=record.document_name,

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,36 @@ async def test_each_expert_citation_uses_its_official_section_provenance(
     assert passages
     assert expected_url_part in str(passages[0].source.url)
     assert passages[0].source.accessed_on == date(2026, 10, 17)
+
+
+@pytest.mark.parametrize(
+    ("domain", "question", "source_part", "heading_part"),
+    [
+        ("tax", "Section 80C specified savings payments tax deduction", "incometax.gov.in/iec/foportal/help/all-topics", "SECTION 80C"),
+        ("tax", "tax-saving instruments and the current counterpart to Section 80C", "incometax.gov.in/iec/foportal/help/all-topics", "SECTION 80C"),
+        ("tax", "NPS contribution tax treatment under Section 80CCD", "pfrda.org.in/schemes/national-pension-system/nps-for-corporates", "NATIONAL PENSION SYSTEM"),
+        ("investment", "What is ELSS and what investment risks does it have?", "investor.sebi.gov.in/elss.html", "EQUITY-LINKED SAVINGS SCHEMES"),
+        ("investment", "What is the Public Provident Fund PPF?", "investor.sebi.gov.in/pdf/downloadable-documents/Financial%20Education", "PUBLIC PROVIDENT FUND"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_committed_corpus_retrieves_tax_saving_and_product_topics(
+    domain: ExpertName, question: str, source_part: str, heading_part: str
+) -> None:
+    corpus_path = Path(__file__).resolve().parents[2] / "knowledge_bases" / f"{domain}_expert.txt"
+    content = corpus_path.read_bytes()
+    record = source_record(domain, f"{domain}-topic", content)
+    store = InMemoryContentStore({record.document_id: content})
+
+    passages = await retrieve_domain_passages(domain, question, [record], store, top_k=6)
+
+    assert passages
+    matching = [
+        passage for passage in passages
+        if source_part in str(passage.source.url)
+        and heading_part in passage.section_heading.upper()
+    ]
+    assert matching, [(str(p.source.url), p.section_heading) for p in passages]
 
 
 class InMemoryContentStore:
@@ -326,6 +357,39 @@ async def test_investing_query_retrieves_investment_passage_with_suffix_variant(
     assert passages
     assert passages[0].document_id == "investment-variant"
     assert "Investment products involve risk" in passages[0].excerpt
+
+
+@pytest.mark.asyncio
+async def test_multiple_registered_documents_are_loaded_concurrently() -> None:
+    content = (
+        "1. MUTUAL FUND EDUCATION\n"
+        "A mutual fund pools money from investors and invests it in a portfolio of securities."
+    ).encode("utf-8")
+
+    class ConcurrentStore:
+        def __init__(self) -> None:
+            self.active = 0
+            self.maximum_active = 0
+
+        async def get(self, domain: ExpertName, document_id: str) -> bytes | None:
+            self.active += 1
+            self.maximum_active = max(self.maximum_active, self.active)
+            await asyncio.sleep(0.01)
+            self.active -= 1
+            return content
+
+    records = [
+        source_record("investment", "investment-a", content),
+        source_record("investment", "investment-b", content),
+    ]
+    store = ConcurrentStore()
+
+    passages = await retrieve_domain_passages(
+        "investment", "What does a mutual fund do?", records, store
+    )
+
+    assert passages
+    assert store.maximum_active == 2
 
 
 @pytest.mark.asyncio

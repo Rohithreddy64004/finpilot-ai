@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -75,24 +76,7 @@ def _load_examples() -> tuple[_RouterExample, ...]:
 
 def _fallback_route(question: str, reason: str) -> RouterDecision:
     text = question.casefold()
-    selected: list[ExpertName] = []
-    keyword_groups: dict[ExpertName, tuple[str, ...]] = {
-        "tax": (
-            "income tax", "tax", "tds", "itr", "assessment year", "financial year",
-            "taxable income", "deduction", "rebate", "gst", "capital gains",
-        ),
-        "investment": (
-            "invest", "saving", "savings", "mutual fund", "sip", "stock", "share",
-            "sebi", "diversification", "portfolio", "return", "liquidity", "risk",
-        ),
-        "insurance": (
-            "insurance", "insurer", "policy", "premium", "claim", "irdai", "coverage",
-            "cover", "deductible", "waiting period", "sum insured",
-        ),
-    }
-    for expert in _EXPERT_ORDER:
-        if any(keyword in text for keyword in keyword_groups[expert]):
-            selected.append(expert)
+    selected = _deterministic_domains(question)
     if not selected:
         return RouterDecision(
             experts=[],
@@ -107,6 +91,57 @@ def _fallback_route(question: str, reason: str) -> RouterDecision:
         experts=selected,
         reason=f"Keyword fallback selected {chosen} based on finance-domain terms. {reason}",
         routing_method="fallback",
+    )
+
+
+def _deterministic_domains(question: str) -> list[ExpertName]:
+    """Add expert domains implied by explicit products and concepts."""
+    text = question.casefold()
+    keyword_groups: dict[ExpertName, tuple[str, ...]] = {
+        "tax": (
+            "income tax", "tax", "tds", "itr", "assessment year", "financial year",
+            "taxable income", "deduction", "rebate", "gst", "capital gains", "80c", "80ccd",
+            "regime", "slab",
+        ),
+        "investment": (
+            "invest", "mutual fund", "sip", "stock", "share", "sebi", "diversification",
+            "portfolio", "return", "liquidity", "risk",
+        ),
+        "insurance": (
+            "insurance", "insurer", "policy", "premium", "claim", "irdai", "coverage",
+            "cover", "deductible", "waiting period", "sum insured",
+        ),
+    }
+    explicit_products = {
+        "investment": (r"\belss\b", r"\bnps\b", r"\bppf\b", r"\bsips?\b", r"\betfs?\b", r"\bmutual\s+funds?\b"),
+        "tax": (r"\b80c\b", r"\b80ccd\b", r"\bregime\b", r"\bslabs?\b", r"\bitrs?\b", r"\brebate\b", r"\bdeductions?\b", r"\btax[- ]saving\b"),
+        "insurance": (r"\bpremiums?\b", r"\bclaims?\b", r"\bwaiting\s+period\b", r"\bpolicies\b|\bpolicy\b", r"\bcovers?\b"),
+    }
+    selected: list[ExpertName] = []
+    for expert in _EXPERT_ORDER:
+        if any(keyword in text for keyword in keyword_groups[expert]) or any(
+            re.search(pattern, text) for pattern in explicit_products[expert]
+        ):
+            selected.append(expert)
+    return selected
+
+
+def _apply_deterministic_domains(decision: RouterDecision, question: str) -> RouterDecision:
+    required = _deterministic_domains(question)
+    if not required:
+        return decision
+    merged = [expert for expert in _EXPERT_ORDER if expert in decision.experts or expert in required]
+    added = [expert for expert in required if expert not in decision.experts]
+    if not added:
+        return decision
+    reason = decision.reason
+    if not decision.experts:
+        reason = "Deterministic finance terms selected the relevant expert domains."
+    reason += f" Deterministic term matching added: {', '.join(added)}."
+    return RouterDecision(
+        experts=merged,
+        reason=reason,
+        routing_method="fallback" if not decision.experts else decision.routing_method,
     )
 
 
@@ -171,7 +206,7 @@ async def _route_with_client(
         content = completion.choices[0].message.content if completion.choices else None
         if not content:
             raise ValueError("router completion contained no assistant content")
-        return _parse_model_route(content)
+        return _apply_deterministic_domains(_parse_model_route(content), question)
     except (NugenAPIError, NugenConfigurationError, ValidationError, ValueError, TypeError):
         return _fallback_route(
             question,

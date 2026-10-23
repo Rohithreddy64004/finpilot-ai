@@ -27,7 +27,7 @@ SECTION_DATE = re.compile(r"^Accessed:\s*(\d{4}-\d{2}-\d{2})\s*$", re.IGNORECASE
 SECTION_TITLE = re.compile(r"^Source title:\s*(.+?)\s*$", re.IGNORECASE)
 SECTION_PUBLISHER = re.compile(r"^Publisher:\s*(.+?)\s*$", re.IGNORECASE)
 OFFICIAL_HOSTS = {
-    "tax": ("incometax.gov.in", "incometaxindia.gov.in"),
+    "tax": ("incometax.gov.in", "incometaxindia.gov.in", "pfrda.org.in"),
     "investment": ("sebi.gov.in",),
     "insurance": ("irdai.gov.in",),
 }

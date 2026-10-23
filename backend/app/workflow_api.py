@@ -75,7 +75,7 @@ DOMAIN_CATEGORIES: dict[ExpertName, str] = {
     "insurance": "finpilot-insurance-education",
 }
 OFFICIAL_SOURCE_HOSTS: dict[ExpertName, tuple[str, ...]] = {
-    "tax": ("incometax.gov.in", "incometaxindia.gov.in"),
+    "tax": ("incometax.gov.in", "incometaxindia.gov.in", "pfrda.org.in"),
     "investment": ("sebi.gov.in",),
     "insurance": ("irdai.gov.in", "policyholder.gov.in"),
 }
