@@ -313,6 +313,49 @@ async def test_conversation_responses_skip_routing_retrieval_and_verification(
     assert app.dependency_overrides[get_interaction_repository]().queries == {}
 
 
+@pytest.mark.asyncio
+async def test_hi_returns_frontend_compatible_conversation_contract_without_provider_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    install_ask_dependencies,
+) -> None:
+    async def should_not_run(*args: Any, **kwargs: Any):
+        raise AssertionError("a pure greeting called routing, retrieval, inference, or verification")
+
+    monkeypatch.setattr(ask_api, "route", should_not_run)
+    monkeypatch.setattr(ask_api, "run_domain_inference", should_not_run)
+    monkeypatch.setattr(ask_api, "get_claim_verifier", should_not_run)
+
+    response = await post_ask({"question": "Hi"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["question"] == "Hi"
+    assert payload["routing"] == {
+        "experts": [],
+        "reason": "Deterministic conversation handling: greeting.",
+        "routing_method": "fallback",
+    }
+    assert payload["experts"] == []
+    assert payload["final_answer"] == (
+        "Hi! I can help with Indian tax, investing, and insurance. What would you like to know?"
+    )
+    assert payload["final_answer_state"] == "conversational"
+    assert payload["final_answer_mode"] == "none"
+    assert payload["final_excerpt_source_ids"] == []
+    assert payload["final_answer_source_grounding_supported"] is False
+    assert payload["final_answer_claim_verification_status"] == "not_performed"
+    assert payload["final_answer_independent_verification_performed"] is False
+    assert payload["sources"] == []
+    assert payload["gaps"] == []
+    assert payload["latency_ms"]["routing_ms"] == 0
+    assert payload["latency_ms"]["experts_ms"] == 0
+    assert payload["latency_ms"]["per_expert_ms"] == {}
+    assert payload["latency_ms"]["synthesis_ms"] == 0
+    assert isinstance(payload["latency_ms"]["total_ms"], int)
+    assert payload["latency_ms"]["total_ms"] >= 0
+    assert app.dependency_overrides[get_interaction_repository]().queries == {}
+
+
 @pytest.mark.parametrize(
     ("question", "domain"),
     [

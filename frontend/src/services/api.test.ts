@@ -106,6 +106,32 @@ function askResponseFixture(): AskResponse {
   }
 }
 
+function conversationResponseFixture(): AskResponse {
+  return {
+    request_id: 'live-contract-fixture',
+    question: 'Hi',
+    routing: {
+      experts: [],
+      reason: 'Deterministic conversation handling: greeting.',
+      routing_method: 'fallback',
+    },
+    experts: [],
+    final_answer: 'Hi! I can help with Indian tax, investing, and insurance. What would you like to know?',
+    final_answer_state: 'conversational',
+    final_answer_mode: 'none',
+    final_excerpt_source_ids: [],
+    final_answer_source_grounding_supported: false,
+    final_answer_source_grounding_note: 'No source-grounded final answer was returned.',
+    final_answer_claim_verifications: [],
+    final_answer_claim_verification_status: 'not_performed',
+    final_answer_independent_verification_performed: false,
+    final_answer_claim_verification_note: 'No final claim verification has been performed.',
+    sources: [],
+    gaps: [],
+    latency_ms: { routing_ms: 0, experts_ms: 0, per_expert_ms: {}, synthesis_ms: 0, total_ms: 0 },
+  }
+}
+
 describe('requestInference', () => {
   it('posts the backend request shape and parses source metadata', async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockedResponse(responseFixture('investment')))
@@ -221,6 +247,21 @@ describe('requestInference', () => {
 })
 
 describe('multi-expert API', () => {
+  it('parses the backend greeting response contract returned for Hi', async () => {
+    const backendResponse = conversationResponseFixture()
+    const fetchMock = vi.fn().mockResolvedValue(mockedResponse(backendResponse))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await requestAsk({ question: 'Hi' })
+
+    expect(response).toEqual(backendResponse)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toMatch(/\/api\/ask$/)
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json', Accept: 'application/json' })
+    expect(JSON.parse(String(init.body))).toEqual({ question: 'Hi' })
+  })
+
   it('posts an ask with an optional expert override and validates citations', async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockedResponse(askResponseFixture()))
     vi.stubGlobal('fetch', fetchMock)

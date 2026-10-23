@@ -324,6 +324,42 @@ describe('FinPilot answer view', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ question: 'What is a SIP?' })
   })
 
+  it('renders the backend Hi response contract as a successful conversation', async () => {
+    const response = askFixture()
+    response.question = 'Hi'
+    response.routing = {
+      experts: [],
+      reason: 'Deterministic conversation handling: greeting.',
+      routing_method: 'fallback',
+    }
+    response.experts = []
+    response.final_answer = 'Hi! I can help with Indian tax, investing, and insurance. What would you like to know?'
+    response.final_answer_state = 'conversational'
+    response.final_answer_mode = 'none'
+    response.final_excerpt_source_ids = []
+    response.final_answer_source_grounding_supported = false
+    response.final_answer_source_grounding_note = 'No source-grounded final answer was returned.'
+    response.final_answer_claim_verifications = []
+    response.final_answer_claim_verification_status = 'not_performed'
+    response.final_answer_independent_verification_performed = false
+    response.final_answer_claim_verification_note = 'No final claim verification has been performed.'
+    response.sources = []
+    response.gaps = []
+    response.latency_ms = { routing_ms: 0, experts_ms: 0, per_expert_ms: {}, synthesis_ms: 0, total_ms: 0 }
+    const fetchMock = installFetch(response)
+    render(<App />)
+    sendQuestion('Hi')
+
+    expect(await screen.findByText(response.final_answer)).not.toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText('No relevant source was found for this question.')).toBeNull()
+    expect(screen.queryByText('Aligned expert')).toBeNull()
+    expect(screen.queryByText('Base model')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Sources' })).toBeNull()
+    expect(screen.queryByText('How this answer was made')).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it.each([
     ['conversational', "I'm doing well, thanks for asking!"],
     ['clarification', "Could you clarify what you'd like to know?"],
