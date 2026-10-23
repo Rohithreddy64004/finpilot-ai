@@ -273,6 +273,7 @@ async def test_ask_out_of_scope_does_not_call_any_expert_or_inference(
     ("question", "expected_state"),
     [
         ("Hi!", "conversational"),
+        ("How are you?", "conversational"),
         ("Thanks!", "conversational"),
         ("What's up?", "conversational"),
         ("How's it going?", "conversational"),
@@ -283,6 +284,7 @@ async def test_ask_out_of_scope_does_not_call_any_expert_or_inference(
         ("What can I ask?", "conversational"),
         ("Hi, can you help me?", "conversational"),
         ("What is the capital of France?", "out_of_scope"),
+        ("What is the weather in Hyderabad?", "out_of_scope"),
         ("Tell me more", "clarification"),
         ("Apple", "clarification"),
     ],
