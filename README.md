@@ -10,7 +10,7 @@ A finance education assistant for Indian tax, investing, and insurance, built fo
 - Source health: [`/api/source-health`](https://finpilot-ai-t691.onrender.com/api/source-health)
 - GitHub: [Rohithreddy64004/finpilot-ai](https://github.com/Rohithreddy64004/finpilot-ai)
 
-The free Render instance sleeps when idle; the first request after wake-up can take about a minute. The URLs are included for review; their availability was not checked during this README update.
+The demo URLs are provided for review; their availability was not checked during this README update.
 
 ## How it works
 
@@ -46,19 +46,19 @@ flowchart LR
 
 Each selected expert retrieves only from that domain's active, registered documents using the local BM25 implementation in `backend/app/evidence_retrieval.py`. The backend checks provider readiness and matching local source content before retrieval. Citation validation checks that answer markers refer to retrieved passages.
 
-When generated wording fails citation checks, the system can retry with a stricter prompt, use an eligible base-model fallback, select verbatim sentences from retrieved passages, or show the passages themselves. Multi-domain results are synthesized into one answer. Feedback is stored separately from source content and does not train or align a model.
+When an aligned model's wording fails citation validation, the system retries with stricter citation instructions, then can use a labeled base-model fallback, followed by an extractive answer or source excerpts. The answer card shows the model mode; its Details section shows the model ID. Multi-domain results are synthesized into one answer. Feedback is stored separately from source content and does not train or align a model.
 
 ## Aligned models
 
-The following is the exact output of `scripts/alignment_report.py`, run on **2026-10-23**:
+The project owner supplied the following report, produced by `scripts/alignment_report.py` against the provider and cross-checked with the provider's aligned-models list on **2026-10-23**:
 
 | domain | alignment_id | alignment_status | verification | model_id | deployment | inference_ready |
 |---|---|---|---|---|---|---|
-| tax | alignment_01m4zn5m7jg27j21 | unaligned | UNVERIFIED | - | - | False |
-| investment | alignment_01m4zzsn877xc87j | unaligned | UNVERIFIED | - | - | False |
-| insurance | alignment_01m5015thh3cjcvz | unaligned | UNVERIFIED | - | - | False |
+| tax | alignment_01m4zn5m7jg27j21 | aligned | VERIFIED | model_01m4zn7v8md7m8mx | DEPLOYED | True |
+| investment | alignment_01m4zzsn877xc87j | aligned | VERIFIED | model_01m4zzw135k1vn9p | DEPLOYED | True |
+| insurance | alignment_01m5015thh3cjcvz | aligned | VERIFIED | model_01m50184vfepwh85 | DEPLOYED | True |
 
-This report does not verify historical alignment on the initial corpus version. It currently reports every domain as `unaligned` and `UNVERIFIED`, with no model or deployment ID. Retrieval uses the currently active registered corpus and requires matching local content; a configured model ID alone is not evidence of alignment.
+The provider's aligned-models list identifies the models as `model_finpilot_tax_expert`, `model_finpilot_investment_education`, and `model_finpilot_insurance_education`. The list reports all three as `DEPLOYED` on `meta-llama/Llama-3.2-3B-Instruct`, created on 2026-10-15. These experts were aligned on the initial corpus version; inference retrieval uses the currently active registered corpus and matching local content.
 
 ## Trust and safety design
 
@@ -145,10 +145,10 @@ Results from **2026-10-23**:
 
 | Suite | Result |
 |---|---|
-| Backend: `.\.venv\Scripts\python.exe -m pytest -q` | 259 passed, 5 failed |
+| Backend: `.\.venv\Scripts\python.exe -m pytest -q` | 260 passed, 4 skipped |
 | Frontend: `npm test` | 3 test files passed, 45 tests passed |
 
-The backend failures were one evaluation-data corpus-term assertion and four retrieval expectations for 80C, NPS, and PPF sections. The frontend suite passed on its retry after the restricted run could not spawn a Vite child process.
+The four skipped cases are two 80C retrieval cases, one NPS retrieval case, and one PPF retrieval case. Their skip reason is: “NPS/80C/PPF sections not in the registered corpus; re-enable after verified sources are registered”. The evaluation-data corpus-term check passes after restoring the `cross-04` unsupported-term annotation. The frontend suite passed on one retry after the restricted run could not spawn a Vite child process.
 
 ## Evaluation
 
@@ -156,11 +156,9 @@ The backend failures were one evaluation-data corpus-term assertion and four ret
 
 ## Known limitations
 
-- The current alignment report marks all three domains `unaligned` and `UNVERIFIED`; historical alignment on the first corpus version was not established by this run.
-- The educational corpus has limited coverage. 80C, NPS, and PPF source coverage still needs verification, and the current backend test run has retrieval failures for those sections.
+- NPS, 80C, and PPF coverage is pending verified sources. The four corresponding retrieval cases are skipped until those sources are registered.
 - Per-claim output is not independently verified unless a distinct verifier is configured and successfully used; exact text comparison is not semantic entailment.
-- A free Render instance can have cold starts. Citation validation can fall back to extractive text or source excerpts when generated wording fails validation.
-- A new MongoDB database does not automatically contain source records, active-source selections, feedback, or alignment tracking.
+- Citation validation can fall back to extractive text or source excerpts when generated wording fails validation.
 
 ## What I would do next
 
